@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import { Routes, Route, Link, useNavigate } from 'react-router-dom';
 import {
   listCharacters,
@@ -188,24 +188,21 @@ function NewCharacterForm() {
   );
 }
 
-function CharacterDetail() {
-  return (
-    <div className="text-center py-12 bg-gray-900 rounded-xl border border-gray-800">
-      <p className="text-4xl mb-4">🦸</p>
-      <p className="text-gray-400">Ficha completa — em breve!</p>
-      <Link to="/characters" className="text-hero-400 hover:underline text-sm mt-4 inline-block">
-        ← Voltar para lista
-      </Link>
-    </div>
-  );
-}
-
 export default function CharactersPage() {
   return (
     <Routes>
       <Route index element={<CharacterList />} />
       <Route path="new" element={<NewCharacterForm />} />
-      <Route path=":id" element={<CharacterDetail />} />
+      <Route path=":id" element={<CharacterSheetWrapper />} />
     </Routes>
+  );
+}
+
+function CharacterSheetWrapper() {
+  const CharacterSheet = lazy(() => import('./CharacterSheet'));
+  return (
+    <Suspense fallback={<div className="text-gray-400 text-center py-12">Carregando ficha...</div>}>
+      <CharacterSheet />
+    </Suspense>
   );
 }
