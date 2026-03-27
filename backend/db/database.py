@@ -1,3 +1,7 @@
+import os
+
+from alembic import command
+from alembic.config import Config
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
@@ -16,6 +20,16 @@ async def get_db() -> AsyncSession:  # type: ignore[misc]
         yield session
 
 
+def _get_alembic_config() -> Config:
+    """Build an Alembic Config pointing at the project root."""
+    # alembic.ini lives at the repo root (one level above backend/)
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    cfg = Config(os.path.join(base_dir, "alembic.ini"))
+    cfg.set_main_option("script_location", os.path.join(base_dir, "alembic"))
+    return cfg
+
+
 async def init_db() -> None:
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    """Run Alembic migrations up to head (creates tables & applies schema changes)."""
+    cfg = _get_alembic_config()
+    command.upgrade(cfg, "head")
