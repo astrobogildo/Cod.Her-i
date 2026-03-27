@@ -10,42 +10,31 @@ Ferramenta web para jogar **Código: Herói** em rede local. Jogadores conectam 
 | Node.js  | 18+          | [nodejs.org](https://nodejs.org/) |
 | Git      | (opcional)   | [git-scm.com](https://git-scm.com/) |
 
-## Instalação Rápida
+## Como Usar
 
-### Windows (Recomendado: PowerShell)
-```powershell
-# Opção 1 — PowerShell (recomendado, com feedback visual)
-powershell -ExecutionPolicy Bypass -File setup.ps1
-
-# Opção 2 — Prompt de comando
-setup.bat
+### Windows
+```
+1. Clique duas vezes em CodigoHeroi.bat
+2. Pronto.
 ```
 
-### Iniciar Servidores
-```powershell
-# Opção 1 — PowerShell
-powershell -ExecutionPolicy Bypass -File start.ps1
+O script faz tudo automaticamente:
+- Detecta Python e Node.js (instala se necessário via winget/download)
+- Cria ambiente virtual e instala dependências do backend
+- Instala dependências do frontend
+- Inicia os servidores
+- Abre o navegador
 
-# Opção 2 — Prompt de comando
-start.bat
+Na segunda vez que executar, pula direto para iniciar os servidores.
 
-# Acesse: http://localhost:5173
-```
-
-### Manual (qualquer OS)
+### Manual (Linux/Mac)
 ```bash
-# Backend
-python -m venv .venv
-.venv/Scripts/pip install -r backend/requirements.txt   # Windows
-# .venv/bin/pip install -r backend/requirements.txt      # Linux/Mac
+python3 -m venv .venv
+.venv/bin/pip install -r backend/requirements.txt
+cd frontend && npm install && cd ..
 
-# Frontend
-cd frontend
-npm install
-cd ..
-
-# Iniciar
-.venv/Scripts/python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
+# Em terminais separados:
+.venv/bin/python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
 cd frontend && npm run dev -- --host
 ```
 
@@ -53,11 +42,10 @@ cd frontend && npm run dev -- --host
 
 | Problema | Solução |
 |----------|---------|
-| setup.bat trava no passo 4 | Use `setup.ps1` (PowerShell) em vez do `.bat` |
 | "Python não encontrado" | Instale Python e marque **"Add Python to PATH"** |
-| "npm install falhou" | Instale Node.js 18+ e execute `cd frontend && npm install` manualmente |
-| Porta 8000 ocupada | Feche outros servidores ou mude a porta no `backend/config.py` |
-| bcrypt não instala | Execute: `.venv\Scripts\pip install --no-cache-dir bcrypt` |
+| "Node.js não encontrado" | Instale Node.js 18+ de nodejs.org |
+| Porta 8000 ocupada | Feche outros servidores ou reinicie o PC |
+| Quer parar os servidores | Pressione qualquer tecla na janela principal |
 
 ## Acesso na Rede Local
 
@@ -84,10 +72,7 @@ codigo-heroi/
 │       ├── components/# Componentes (PowerForge)
 │       ├── context/   # Estado global (Auth, Catálogo)
 │       └── api.ts     # Cliente API tipado
-├── setup.bat          # Instalador automático (CMD)
-├── setup.ps1          # Instalador automático (PowerShell — recomendado)
-├── start.bat          # Iniciar servidores (CMD)
-├── start.ps1          # Iniciar servidores (PowerShell)
+├── CodigoHeroi.bat    # Clique duplo: instala tudo e inicia
 └── README.md
 ```
 

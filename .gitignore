@@ -35,5 +35,11 @@ frontend/.vite/
 .env
 .env.local
 
+# Setup marker
+.setup_done
+
+# Setup marker
+.setup_done
+
 # Docx source (large binary)
 *.docx
