@@ -29,6 +29,14 @@ if not exist "!MARKER!" goto :setup
 if not exist "!VPYTHON!" goto :setup
 if not exist "!FRONTEND!\node_modules\.package-lock.json" goto :setup
 
+:: Verifica se todos os modulos importam corretamente
+"!VPYTHON!" -c "import fastapi,uvicorn,sqlalchemy,greenlet,jose,bcrypt" >nul 2>&1
+if errorlevel 1 (
+    echo   Detectada atualizacao de dependencias...
+    del "!MARKER!" >nul 2>&1
+    goto :setup
+)
+
 echo   Ambiente OK. Iniciando servidores...
 goto :start_servers
 
