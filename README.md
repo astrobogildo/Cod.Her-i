@@ -12,12 +12,24 @@ Ferramenta web para jogar **Código: Herói** em rede local. Jogadores conectam 
 
 ## Instalação Rápida
 
-### Windows
+### Windows (Recomendado: PowerShell)
+```powershell
+# Opção 1 — PowerShell (recomendado, com feedback visual)
+powershell -ExecutionPolicy Bypass -File setup.ps1
+
+# Opção 2 — Prompt de comando
+setup.bat
 ```
-1. Clone ou baixe este repositório
-2. Execute: setup.bat
-3. Execute: start.bat
-4. Acesse: http://localhost:5173
+
+### Iniciar Servidores
+```powershell
+# Opção 1 — PowerShell
+powershell -ExecutionPolicy Bypass -File start.ps1
+
+# Opção 2 — Prompt de comando
+start.bat
+
+# Acesse: http://localhost:5173
 ```
 
 ### Manual (qualquer OS)
@@ -36,6 +48,16 @@ cd ..
 .venv/Scripts/python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
 cd frontend && npm run dev -- --host
 ```
+
+### Solução de Problemas
+
+| Problema | Solução |
+|----------|---------|
+| setup.bat trava no passo 4 | Use `setup.ps1` (PowerShell) em vez do `.bat` |
+| "Python não encontrado" | Instale Python e marque **"Add Python to PATH"** |
+| "npm install falhou" | Instale Node.js 18+ e execute `cd frontend && npm install` manualmente |
+| Porta 8000 ocupada | Feche outros servidores ou mude a porta no `backend/config.py` |
+| bcrypt não instala | Execute: `.venv\Scripts\pip install --no-cache-dir bcrypt` |
 
 ## Acesso na Rede Local
 
@@ -58,11 +80,14 @@ codigo-heroi/
 │   └── main.py        # Entry point
 ├── frontend/          # Interface React + TypeScript + Tailwind
 │   └── src/
-│       ├── pages/     # Páginas (Login, Dashboard, Personagens)
-│       ├── context/   # Estado global (Auth)
+│       ├── pages/     # Páginas (Login, Dashboard, Personagens, Ficha)
+│       ├── components/# Componentes (PowerForge)
+│       ├── context/   # Estado global (Auth, Catálogo)
 │       └── api.ts     # Cliente API tipado
-├── setup.bat          # Instalador automático
-├── start.bat          # Iniciar servidores
+├── setup.bat          # Instalador automático (CMD)
+├── setup.ps1          # Instalador automático (PowerShell — recomendado)
+├── start.bat          # Iniciar servidores (CMD)
+├── start.ps1          # Iniciar servidores (PowerShell)
 └── README.md
 ```
 
