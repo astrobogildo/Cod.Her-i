@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 # Attribute PP cost table (cumulative from rank 2 base)
+# Ranks 1-6 = compra direta; acima de 6, use Enhanced Trait
 _ATTR_PP_COST = {1: -1, 2: 0, 3: 2, 4: 4, 5: 8, 6: 14}
+_ATTR_MAX_RANK = 6
 
 # Power Level → initial PP
 PL_TABLE = {3: 45, 5: 75, 7: 105, 10: 150, 13: 195, 15: 225}
@@ -11,7 +13,8 @@ PL_TABLE = {3: 45, 5: 75, 7: 105, 10: 150, 13: 195, 15: 225}
 
 def attr_pp_cost(rank: int) -> int:
     """PP cost for a single attribute at given rank (relative to free rank 2)."""
-    return _ATTR_PP_COST.get(rank, 0)
+    clamped = max(1, min(rank, _ATTR_MAX_RANK))
+    return _ATTR_PP_COST.get(clamped, 0)
 
 
 def calc_attributes_pp(attrs: dict) -> int:

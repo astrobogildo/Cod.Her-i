@@ -9,7 +9,7 @@ class RollLog(Base):
     __tablename__ = "roll_logs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    table_id: Mapped[int] = mapped_column(ForeignKey("game_tables.id"), index=True)
+    table_id: Mapped[int | None] = mapped_column(ForeignKey("game_tables.id"), nullable=True, index=True)
     character_id: Mapped[int | None] = mapped_column(ForeignKey("characters.id"), nullable=True)
     character_name: Mapped[str] = mapped_column(String(120), default="")
     roll_type: Mapped[str] = mapped_column(String(30))  # skill | attack | defense | power | hero_die | custom

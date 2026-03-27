@@ -3,6 +3,7 @@ import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { listCharacters, CharacterSummary } from '../api';
 import CharactersPage from './CharactersPage';
+import TablesPage from './TablesPage';
 
 function Sidebar() {
   const { user, logout } = useAuth();
@@ -39,7 +40,11 @@ function Sidebar() {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-medium text-white">{user?.display_name}</p>
-            <p className="text-xs text-gray-500">@{user?.username}</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-xs text-gray-500">@{user?.username}</p>
+              {user?.is_admin && <span className="text-[9px] bg-yellow-700/30 text-yellow-400 px-1.5 py-0.5 rounded-full">Admin</span>}
+              {user?.role === 'gm' && !user?.is_admin && <span className="text-[9px] bg-purple-700/30 text-purple-400 px-1.5 py-0.5 rounded-full">Mestre</span>}
+            </div>
           </div>
           <button
             onClick={logout}
@@ -119,12 +124,7 @@ function Home() {
 }
 
 function TablesPlaceholder() {
-  return (
-    <div className="text-center py-12 bg-gray-900 rounded-xl border border-gray-800">
-      <p className="text-4xl mb-4">🎲</p>
-      <p className="text-gray-400">Mesas - em breve!</p>
-    </div>
-  );
+  return <TablesPage />;
 }
 
 export default function DashboardPage() {

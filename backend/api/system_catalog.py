@@ -537,6 +537,94 @@ DESCRIPTOR_SUGGESTIONS = {
     "Escopo": ["Pessoal", "Alvo Único", "Grupo", "Área Definida", "Global", "Dimensional", "Temporal"],
 }
 
+# ────────────────────────────────────────────────────────────
+# EQUIPMENT CATALOG
+# ────────────────────────────────────────────────────────────
+EQUIPMENT_ITEMS = [
+    # Weapons — Melee
+    {"name": "Bastão", "category": "weapon_melee", "cost": 1, "effect": "Dano FOR+1", "description": "Bastão simples de madeira ou metal"},
+    {"name": "Espada", "category": "weapon_melee", "cost": 3, "effect": "Dano FOR+3, Crit 19-20", "description": "Espada longa ou katana"},
+    {"name": "Faca", "category": "weapon_melee", "cost": 1, "effect": "Dano FOR+1, Arremessável", "description": "Faca de combate ou adaga"},
+    {"name": "Machado", "category": "weapon_melee", "cost": 2, "effect": "Dano FOR+2", "description": "Machado de combate"},
+    {"name": "Lança", "category": "weapon_melee", "cost": 2, "effect": "Dano FOR+2, Alcance +1.5m", "description": "Lança de combate ou bastão longo"},
+    {"name": "Corrente/Chicote", "category": "weapon_melee", "cost": 2, "effect": "Dano FOR+1, Alcance +3m", "description": "Arma com alcance estendido"},
+    {"name": "Soco Inglês", "category": "weapon_melee", "cost": 1, "effect": "Dano FOR+1", "description": "Reforço para ataques desarmados"},
+    # Weapons — Ranged
+    {"name": "Pistola", "category": "weapon_ranged", "cost": 3, "effect": "Dano Dist.3", "description": "Pistola semiautomática padrão"},
+    {"name": "Pistola Pesada", "category": "weapon_ranged", "cost": 4, "effect": "Dano Dist.4", "description": "Revólver .44 ou Desert Eagle"},
+    {"name": "Submetralhadora", "category": "weapon_ranged", "cost": 4, "effect": "Dano Dist.4, Multiattack", "description": "Arma automática compacta"},
+    {"name": "Rifle", "category": "weapon_ranged", "cost": 5, "effect": "Dano Dist.5", "description": "Rifle de assalto ou caça"},
+    {"name": "Rifle de Precisão", "category": "weapon_ranged", "cost": 5, "effect": "Dano Dist.5, Ext.Range 2", "description": "Sniper ou rifle de longo alcance"},
+    {"name": "Shotgun", "category": "weapon_ranged", "cost": 5, "effect": "Dano Dist.5 (curto alcance)", "description": "Espingarda — devastadora de perto"},
+    {"name": "Arco", "category": "weapon_ranged", "cost": 3, "effect": "Dano FOR+1, Dist.", "description": "Arco composto ou recurvo"},
+    {"name": "Shuriken/Facas de Arremesso", "category": "weapon_ranged", "cost": 1, "effect": "Dano Dist.1, Multiattack", "description": "Projéteis pequenos múltiplos"},
+    {"name": "Taser", "category": "weapon_ranged", "cost": 3, "effect": "Aflição Dist.3 (Atordoado)", "description": "Arma de choque à distância"},
+    {"name": "Gás Lacrimogêneo", "category": "weapon_ranged", "cost": 4, "effect": "Aflição Área(Nuvem) 4", "description": "Granada de gás"},
+    {"name": "Granada", "category": "weapon_ranged", "cost": 5, "effect": "Dano Área(Rajada) 5", "description": "Granada de fragmentação"},
+    # Armor
+    {"name": "Colete Protetor", "category": "armor", "cost": 2, "effect": "Proteção 2", "description": "Colete à prova de balas leve"},
+    {"name": "Armadura Tática", "category": "armor", "cost": 4, "effect": "Proteção 4", "description": "Armadura corporal completa"},
+    {"name": "Escudo", "category": "armor", "cost": 2, "effect": "Parry +2", "description": "Escudo de combate"},
+    {"name": "Capacete", "category": "armor", "cost": 1, "effect": "Proteção 1 (cabeça)", "description": "Capacete tático ou motocicleta"},
+    # Gear
+    {"name": "Comunicador", "category": "gear", "cost": 1, "effect": "Comunicação local", "description": "Rádio de curto alcance ou earpiece"},
+    {"name": "Smartphone", "category": "gear", "cost": 1, "effect": "Comunicação, Computador", "description": "Celular moderno com internet"},
+    {"name": "Binóculos", "category": "gear", "cost": 1, "effect": "Sentidos (Visão Estendida)", "description": "Binóculos ou luneta"},
+    {"name": "Visão Noturna", "category": "gear", "cost": 1, "effect": "Sentidos (Darkvision)", "description": "Óculos de visão noturna"},
+    {"name": "Lanterna", "category": "gear", "cost": 1, "effect": "Iluminação", "description": "Lanterna tática potente"},
+    {"name": "Kit Médico", "category": "gear", "cost": 1, "effect": "+2 Tratamento", "description": "Kit de primeiros socorros completo"},
+    {"name": "Multitool", "category": "gear", "cost": 1, "effect": "Ferramentas improvisadas", "description": "Canivete suíço ou kit de ferramentas"},
+    {"name": "Corda", "category": "gear", "cost": 1, "effect": "Escalada auxiliada", "description": "30m de corda resistente"},
+    {"name": "Algemas", "category": "gear", "cost": 1, "effect": "Contenção", "description": "Algemas ou zip ties"},
+    {"name": "Disfarce", "category": "gear", "cost": 1, "effect": "+5 Decepção (disfarce)", "description": "Kit de maquiagem e roupas"},
+    {"name": "Laptop", "category": "gear", "cost": 1, "effect": "+2 Tecnologia/Investigação", "description": "Computador portátil"},
+    {"name": "GPS/Rastreador", "category": "gear", "cost": 1, "effect": "Rastreamento", "description": "Dispositivo de localização"},
+    {"name": "Câmera Espiã", "category": "gear", "cost": 1, "effect": "Vigilância remota", "description": "Micro-câmera sem fio"},
+    {"name": "Explosivos (C4)", "category": "gear", "cost": 5, "effect": "Dano Área(Rajada) 5", "description": "Explosivo plástico com detonador"},
+    # Vehicles
+    {"name": "Moto", "category": "vehicle", "cost": 2, "effect": "Velocidade 5, Def 8, Vit 6", "description": "Motocicleta rápida"},
+    {"name": "Carro", "category": "vehicle", "cost": 2, "effect": "Velocidade 5, Def 8, Vit 8", "description": "Carro padrão"},
+    {"name": "Carro Blindado", "category": "vehicle", "cost": 5, "effect": "Velocidade 5, Def 6, Vit 11, Proteção 3", "description": "SUV blindado ou van tática"},
+    {"name": "Helicóptero", "category": "vehicle", "cost": 11, "effect": "Voo 7, Def 6, Vit 10", "description": "Helicóptero pequeno"},
+    {"name": "Lancha", "category": "vehicle", "cost": 3, "effect": "Natação 6, Def 8, Vit 8", "description": "Lancha rápida"},
+]
+
+# ────────────────────────────────────────────────────────────
+# BASE/HQ FEATURES
+# ────────────────────────────────────────────────────────────
+BASE_SIZES = [
+    {"name": "Minúscula", "description": "Cômodo, cofre, baú", "cost": 0},
+    {"name": "Pequena", "description": "Apartamento, escritório", "cost": 1},
+    {"name": "Média", "description": "Casa, andar de prédio", "cost": 2},
+    {"name": "Grande", "description": "Galpão, mansão pequena", "cost": 3},
+    {"name": "Enorme", "description": "Mansão, base subterrânea", "cost": 4},
+    {"name": "Colossal", "description": "Arranha-céu, estação orbital", "cost": 5},
+]
+
+BASE_FEATURES = [
+    {"name": "Academia", "cost": 1, "description": "Área de treinamento físico e combate"},
+    {"name": "Biblioteca", "cost": 1, "description": "+2 em rolagens de Expertise/Investigação realizadas aqui"},
+    {"name": "Camuflado", "cost": 1, "description": "Base é difícil de encontrar (Percepção TN4 para localizar)"},
+    {"name": "Celas", "cost": 1, "description": "Espaço seguro para manter prisioneiros"},
+    {"name": "Comunicações", "cost": 1, "description": "Sistema de rádio/satélite para comunicação global"},
+    {"name": "Computador", "cost": 1, "description": "+2 em rolagens de Tecnologia realizadas aqui"},
+    {"name": "Doca", "cost": 1, "description": "Atracadouro para veículos aquáticos"},
+    {"name": "Enfermaria", "cost": 1, "description": "+2 em rolagens de Tratamento; equipamentos médicos completos"},
+    {"name": "Espaço Habitável", "cost": 1, "description": "Quartos, cozinha e confortos para moradia"},
+    {"name": "Garagem", "cost": 1, "description": "Guarda e manutenção de veículos terrestres"},
+    {"name": "Hangar", "cost": 1, "description": "Guarda e manutenção de veículos aéreos"},
+    {"name": "Isolado", "cost": 1, "description": "Localização remota/inacessível (bloqueio de detecção)"},
+    {"name": "Laboratório", "cost": 1, "description": "+2 em rolagens de Tecnologia/Expertise científica"},
+    {"name": "Oficina", "cost": 1, "description": "+2 em rolagens de Fabricação e reparo de equipamentos"},
+    {"name": "Pessoal", "cost": 1, "description": "NPCs de suporte (seguranças, mecânicos, mordomo)"},
+    {"name": "Sala de Guerra", "cost": 1, "description": "Centro de planejamento tático com mapas e monitores"},
+    {"name": "Sistema Contra Incêndio", "cost": 1, "description": "Supressão automática de fogo"},
+    {"name": "Sistema de Defesa", "cost": 1, "description": "Armadilhas, torretas ou barreiras (Dano/Aflição rank 5)"},
+    {"name": "Sistema de Energia", "cost": 1, "description": "Gerador independente; imune a apagões"},
+    {"name": "Sistema de Segurança", "cost": 1, "description": "Alarmes, câmeras, trancas (Tecnologia TN4 para invadir)"},
+    {"name": "Teleporter", "cost": 2, "description": "Teletransporte para/de locais pré-definidos"},
+]
+
 
 # ────────────────────────────────────────────────────────────
 # ENDPOINT — everything in one call
@@ -557,4 +645,7 @@ async def get_system_catalog():
         "affliction_conditions": AFFLICTION_CONDITIONS,
         "immunity_options": IMMUNITY_OPTIONS,
         "descriptor_suggestions": DESCRIPTOR_SUGGESTIONS,
+        "equipment_items": EQUIPMENT_ITEMS,
+        "base_sizes": BASE_SIZES,
+        "base_features": BASE_FEATURES,
     }

@@ -71,6 +71,26 @@ export interface PowerLevel {
   context: string;
 }
 
+export interface EquipmentItem {
+  name: string;
+  category: string;
+  cost: number;
+  effect: string;
+  description: string;
+}
+
+export interface BaseSize {
+  name: string;
+  description: string;
+  cost: number;
+}
+
+export interface BaseFeature {
+  name: string;
+  cost: number;
+  description: string;
+}
+
 export interface SystemCatalog {
   attributes: Attribute[];
   attr_cost_table: { rank: number; description: string; pp_cumulative: number }[];
@@ -84,6 +104,9 @@ export interface SystemCatalog {
   affliction_conditions: Record<string, string[]>;
   immunity_options: { name: string; cost: number }[];
   descriptor_suggestions: Record<string, string[]>;
+  equipment_items: EquipmentItem[];
+  base_sizes: BaseSize[];
+  base_features: BaseFeature[];
 }
 
 interface CatalogState {

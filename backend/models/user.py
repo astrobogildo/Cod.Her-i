@@ -12,7 +12,8 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(256))
     display_name: Mapped[str] = mapped_column(String(100))
-    role: Mapped[str] = mapped_column(String(10), default="player")  # player | gm
+    role: Mapped[str] = mapped_column(String(10), default="player")  # player | gm | admin
+    is_admin: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

@@ -26,6 +26,7 @@ export interface User {
   username: string;
   display_name: string;
   role: string;
+  is_admin: boolean;
 }
 
 export function register(username: string, password: string, display_name: string) {
@@ -44,6 +45,17 @@ export function login(username: string, password: string) {
 
 export function getMe() {
   return request<User>('/api/auth/me');
+}
+
+export function listUsers() {
+  return request<User[]>('/api/auth/users');
+}
+
+export function setUserRole(user_id: number, role: string, is_admin: boolean) {
+  return request<User>('/api/auth/set-role', {
+    method: 'POST',
+    body: JSON.stringify({ user_id, role, is_admin }),
+  });
 }
 
 /* ─── Characters ─── */

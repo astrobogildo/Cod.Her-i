@@ -23,9 +23,16 @@ class UserResponse(BaseModel):
     username: str
     display_name: str
     role: str
+    is_admin: bool = False
 
     class Config:
         from_attributes = True
+
+
+class SetRoleRequest(BaseModel):
+    user_id: int
+    role: str = "player"  # player | gm | admin
+    is_admin: bool = False
 
 
 # ── Character ────────────────────────────────────
@@ -124,7 +131,7 @@ class JoinTableRequest(BaseModel):
 
 # ── Dice Roll ────────────────────────────────────
 class RollRequest(BaseModel):
-    table_id: int
+    table_id: int | None = None
     character_id: int | None = None
     roll_type: str = "custom"
     description: str = ""

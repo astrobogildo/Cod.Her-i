@@ -3,6 +3,8 @@ import { useParams, Link } from 'react-router-dom';
 import { getCharacter, updateCharacter, rollDice, RollResult } from '../api';
 import { useCatalog } from '../context/CatalogContext';
 import PowerForge from '../components/PowerForge';
+import EquipmentArmory from '../components/EquipmentArmory';
+import BaseArchitect from '../components/BaseArchitect';
 
 /* ─── Types ─── */
 interface CharacterFull {
@@ -51,13 +53,13 @@ const ATTR_NAMES: Record<string, string> = {
 };
 
 const ATTR_PP_COST: Record<number, number> = { 1: -1, 2: 0, 3: 2, 4: 4, 5: 8, 6: 14 };
+const ATTR_MAX_RANK = 6;
 
 /* ─── Attribute Editor ─── */
 function AttributeBlock({
-  attrs, plCap, onChange, onRoll,
+  attrs, onChange, onRoll,
 }: {
   attrs: Record<string, number>;
-  plCap: number;
   onChange: (key: string, val: number) => void;
   onRoll: (pool: number, label: string) => void;
 }) {
@@ -67,7 +69,7 @@ function AttributeBlock({
     <div className="bg-gray-900 rounded-xl border border-gray-800 p-5">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-bold text-hero-400">Atributos</h2>
-        <span className="text-xs text-gray-500">{totalPP} PP</span>
+        <span className="text-xs text-gray-500">{totalPP} PP <span className="text-gray-600">(máx rank {ATTR_MAX_RANK})</span></span>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {Object.entries(attrs).map(([key, val]) => (
@@ -81,8 +83,9 @@ function AttributeBlock({
               >−</button>
               <span className="text-2xl font-bold text-white w-8">{val}</span>
               <button
-                onClick={() => val < plCap && onChange(key, val + 1)}
-                className="w-6 h-6 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm"
+                onClick={() => val < ATTR_MAX_RANK && onChange(key, val + 1)}
+                className={`w-6 h-6 rounded text-sm ${val >= ATTR_MAX_RANK ? 'bg-gray-800 text-gray-600 cursor-not-allowed' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+                disabled={val >= ATTR_MAX_RANK}
               >+</button>
             </div>
             <div className="text-[10px] text-gray-600 mt-1">{ATTR_PP_COST[val] ?? '?'} PP</div>
@@ -95,6 +98,9 @@ function AttributeBlock({
           </div>
         ))}
       </div>
+      {Object.values(attrs).some(v => v >= ATTR_MAX_RANK) && (
+        <p className="text-[10px] text-gray-600 mt-2 text-center">Acima de {ATTR_MAX_RANK}? Use o poder "Atributo Aprimorado" (Enhanced Trait)</p>
+      )}
     </div>
   );
 }
@@ -148,7 +154,7 @@ function SkillsBlock({
                 >−</button>
                 <span className="text-sm font-mono w-6 text-center text-white">{sk.ranks}</span>
                 <button
-                  onClick={() => sk.ranks < plCap * 2 && setRank(sk.name, sk.ranks + 1)}
+                  onClick={() => sk.ranks < plCap && setRank(sk.name, sk.ranks + 1)}
                   className="w-5 h-5 rounded bg-gray-700 hover:bg-gray-600 text-gray-400 text-xs"
                 >+</button>
               </div>
@@ -721,7 +727,6 @@ export default function CharacterSheet() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <AttributeBlock
             attrs={char.attributes}
-            plCap={char.power_level}
             onChange={(key, val) => {
               const next = { ...char.attributes, [key]: val };
               save({ attributes: next });
@@ -750,6 +755,17 @@ export default function CharacterSheet() {
             complications={char.complications}
             onChange={complications => save({ complications })}
           />
+          <EquipmentArmory
+            equipment={char.equipment}
+            advantages={char.advantages}
+            onChange={equipment => save({ equipment })}
+          />
+          <div className="lg:col-span-2">
+            <BaseArchitect
+              baseHq={char.base_hq}
+              onChange={base_hq => save({ base_hq })}
+            />
+          </div>
         </div>
       )}
 
