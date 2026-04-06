@@ -118,11 +118,11 @@ for /f "usebackq delims=" %%p in ("!ROOT!\backend\requirements.txt") do (
 )
 
 echo          Verificando modulos...
-"!VPYTHON!" -c "import fastapi,uvicorn,sqlalchemy,jose,bcrypt,alembic" >nul 2>&1
+"!VPYTHON!" -c "import fastapi,uvicorn,sqlalchemy,greenlet,jose,bcrypt,alembic" >nul 2>&1
 if errorlevel 1 (
     echo          Algum pacote falhou, reinstalando tudo...
     "!VPYTHON!" -m pip install --no-cache-dir -r "!ROOT!\backend\requirements.txt"
-    "!VPYTHON!" -c "import fastapi,uvicorn,sqlalchemy,jose,bcrypt,alembic" >nul 2>&1
+    "!VPYTHON!" -c "import fastapi,uvicorn,sqlalchemy,greenlet,jose,bcrypt,alembic" >nul 2>&1
     if errorlevel 1 (
         echo   ERRO: Dependencias do backend falharam.
         echo         Tente: .venv\Scripts\pip install -r backend\requirements.txt
