@@ -2,11 +2,23 @@ import { useState, FormEvent } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
+const BASE = '';
+async function resetPassword(username: string, newPassword: string): Promise<{ detail: string }> {
+  const res = await fetch(`${BASE}/api/auth/reset-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, new_password: newPassword }),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.detail || 'Erro ao redefinir senha');
+  return body;
+}
+
 export default function LoginPage() {
   const { user, login, register } = useAuth();
   const navigate = useNavigate();
 
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [mode, setMode] = useState<'login' | 'register' | 'reset'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -21,7 +33,13 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      if (mode === 'login') {
+      if (mode === 'reset') {
+        const result = await resetPassword(username, password);
+        setError('');
+        setMode('login');
+        alert(result.detail);
+        return;
+      } else if (mode === 'login') {
         await login(username, password);
       } else {
         await register(username, password, displayName || username);
@@ -45,15 +63,21 @@ export default function LoginPage() {
         <div className="flex mb-6 bg-gray-800 rounded-lg p-1">
           <button
             className={`flex-1 py-2 rounded-md text-sm font-medium transition ${mode === 'login' ? 'bg-hero-600 text-white' : 'text-gray-400 hover:text-white'}`}
-            onClick={() => setMode('login')}
+            onClick={() => { setMode('login'); setError(''); }}
           >
             Entrar
           </button>
           <button
             className={`flex-1 py-2 rounded-md text-sm font-medium transition ${mode === 'register' ? 'bg-hero-600 text-white' : 'text-gray-400 hover:text-white'}`}
-            onClick={() => setMode('register')}
+            onClick={() => { setMode('register'); setError(''); }}
           >
             Criar Conta
+          </button>
+          <button
+            className={`flex-1 py-2 rounded-md text-sm font-medium transition ${mode === 'reset' ? 'bg-yellow-600 text-white' : 'text-gray-400 hover:text-white'}`}
+            onClick={() => { setMode('reset'); setError(''); }}
+          >
+            Resetar Senha
           </button>
         </div>
 
@@ -70,7 +94,7 @@ export default function LoginPage() {
             />
           </div>
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Senha</label>
+            <label className="block text-sm text-gray-400 mb-1">{mode === 'reset' ? 'Nova Senha' : 'Senha'}</label>
             <input
               type="password"
               value={password}
@@ -105,7 +129,7 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full bg-hero-600 hover:bg-hero-700 disabled:opacity-50 text-white font-semibold py-3 rounded-lg transition"
           >
-            {loading ? 'Aguarde...' : mode === 'login' ? 'Entrar' : 'Criar Conta'}
+            {loading ? 'Aguarde...' : mode === 'login' ? 'Entrar' : mode === 'register' ? 'Criar Conta' : 'Redefinir Senha'}
           </button>
         </form>
       </div>

@@ -29,6 +29,11 @@ class UserResponse(BaseModel):
         from_attributes = True
 
 
+class ResetPasswordRequest(BaseModel):
+    username: str
+    new_password: str = Field(min_length=4, max_length=128)
+
+
 class SetRoleRequest(BaseModel):
     user_id: int
     role: str = "player"  # player | gm | admin

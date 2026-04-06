@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.database import get_db
 from backend.models.user import User
 from backend.auth.security import hash_password, verify_password, create_access_token, get_current_user
-from backend.schemas import RegisterRequest, LoginRequest, TokenResponse, UserResponse, SetRoleRequest
+from backend.schemas import RegisterRequest, LoginRequest, TokenResponse, UserResponse, SetRoleRequest, ResetPasswordRequest
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -42,6 +42,17 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
 
     token = create_access_token(user.id, user.username)
     return TokenResponse(access_token=token)
+
+
+@router.post("/reset-password")
+async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).where(User.username == body.username))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    user.password_hash = hash_password(body.new_password)
+    await db.commit()
+    return {"detail": f"Senha de '{user.display_name}' redefinida com sucesso"}
 
 
 @router.get("/me", response_model=UserResponse)
