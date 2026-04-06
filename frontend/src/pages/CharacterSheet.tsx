@@ -178,9 +178,11 @@ function DefensesBlock({
   char: CharacterFull;
   onRoll: (pool: number, label: string) => void;
 }) {
+  const attrMap: Record<string, string> = { dodge: 'AGI', parry: 'CMB', fortitude: 'RES', willpower: 'PER' };
+  const attrKeyMap: Record<string, string> = { dodge: 'AGI', parry: 'CMB', fortitude: 'RES', willpower: 'PER' };
   const defs = [
     { name: 'Esquiva', key: 'dodge', val: char.dodge },
-    { name: 'Parry', key: 'parry', val: char.parry },
+    { name: 'Aparar', key: 'parry', val: char.parry },
     { name: 'Fortitude', key: 'fortitude', val: char.fortitude },
     { name: 'Vontade', key: 'willpower', val: char.willpower },
   ];
@@ -189,16 +191,24 @@ function DefensesBlock({
     <div className="bg-gray-900 rounded-xl border border-gray-800 p-5">
       <h2 className="text-lg font-bold text-hero-400 mb-4">Defesas</h2>
       <div className="grid grid-cols-2 gap-3">
-        {defs.map(d => (
-          <div key={d.key} className="bg-gray-800 rounded-lg p-3 text-center">
-            <div className="text-xs text-gray-400">{d.name}</div>
-            <div className="text-2xl font-bold text-white">{d.val}</div>
-            <button
-              onClick={() => onRoll(d.val, d.name)}
-              className="mt-1 text-[10px] bg-hero-600/20 hover:bg-hero-600/40 text-hero-400 px-3 py-1 rounded-full"
-            >🎲 Rolar</button>
-          </div>
-        ))}
+        {defs.map(d => {
+          const baseAttr = attrKeyMap[d.key];
+          const baseVal = char.attributes[baseAttr] ?? 0;
+          const bonus = d.val - baseVal;
+          return (
+            <div key={d.key} className="bg-gray-800 rounded-lg p-3 text-center">
+              <div className="text-xs text-gray-400">{d.name}</div>
+              <div className="text-2xl font-bold text-white">{d.val}</div>
+              <div className="text-[10px] text-gray-500">
+                {attrMap[d.key]} {baseVal}{bonus > 0 ? ` +${bonus}` : ''}
+              </div>
+              <button
+                onClick={() => onRoll(d.val, d.name)}
+                className="mt-1 text-[10px] bg-hero-600/20 hover:bg-hero-600/40 text-hero-400 px-3 py-1 rounded-full"
+              >🎲 Rolar</button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -298,9 +308,31 @@ function ConditionsBlock({
     }
   };
 
+  const activeDetails = allConditions.filter(c => activeConditions.includes(c.name));
+
   return (
     <div className="bg-gray-900 rounded-xl border border-gray-800 p-5">
       <h2 className="text-lg font-bold text-hero-400 mb-3">Condições</h2>
+      {activeDetails.length > 0 && (
+        <div className="space-y-2 mb-3">
+          {activeDetails.map(c => {
+            const sevColors: Record<number, string> = {
+              1: 'border-yellow-600/40 bg-yellow-900/20',
+              2: 'border-orange-600/40 bg-orange-900/20',
+              3: 'border-red-600/40 bg-red-900/20',
+            };
+            return (
+              <div key={c.name} className={`rounded-lg border p-3 ${sevColors[c.severity]}`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold text-white">{c.name_pt} <span className="text-[10px] text-gray-500">({c.name})</span></span>
+                  <button onClick={() => toggle(c.name)} className="text-[10px] text-red-400 hover:text-red-300">✕ Remover</button>
+                </div>
+                <p className="text-[11px] text-gray-300 mt-1">{c.effect}</p>
+              </div>
+            );
+          })}
+        </div>
+      )}
       <div className="flex flex-wrap gap-1.5">
         {allConditions.map(c => {
           const active = activeConditions.includes(c.name);
@@ -417,6 +449,30 @@ function AdvantagesBlock({
 }
 
 /* ─── Powers List ─── */
+function powerArrayCost(powers: PowerEntry[]): number {
+  // Standalone powers: full cost. Array base: full cost. Alternates: 1 PP each.
+  let total = 0;
+  const arrays = new Map<string, PowerEntry[]>();
+  for (const p of powers) {
+    if (p.array_id) {
+      const arr = arrays.get(p.array_id) ?? [];
+      arr.push(p);
+      arrays.set(p.array_id, arr);
+    } else {
+      total += p.final_cost;
+    }
+  }
+  for (const arr of arrays.values()) {
+    const base = arr.find(p => !p.is_alternate);
+    if (base) total += base.final_cost;
+    const alts = arr.filter(p => p.is_alternate);
+    total += alts.length; // 1 PP each
+  }
+  return total;
+}
+
+function uid() { return Math.random().toString(36).slice(2, 10); }
+
 function PowersBlock({
   powers, plCap, onChange,
 }: {
@@ -426,18 +482,23 @@ function PowersBlock({
 }) {
   const [showForge, setShowForge] = useState(false);
   const [editIndex, setEditIndex] = useState<number | null>(null);
-  const totalPP = powers.reduce((s, p) => s + p.final_cost, 0);
+  const [forgeArrayId, setForgeArrayId] = useState<string | undefined>(undefined);
+  const [forgeIsAlternate, setForgeIsAlternate] = useState(false);
+  const totalPP = powerArrayCost(powers);
 
   const addPower = (power: PowerEntry) => {
+    const p = { ...power, array_id: forgeArrayId, is_alternate: forgeIsAlternate };
     if (editIndex !== null) {
       const next = [...powers];
-      next[editIndex] = power;
+      next[editIndex] = p;
       onChange(next);
       setEditIndex(null);
     } else {
-      onChange([...powers, power]);
+      onChange([...powers, p]);
     }
     setShowForge(false);
+    setForgeArrayId(undefined);
+    setForgeIsAlternate(false);
   };
 
   const removePower = (idx: number) => {
@@ -445,9 +506,73 @@ function PowersBlock({
   };
 
   const startEdit = (idx: number) => {
+    const p = powers[idx];
+    setForgeArrayId(p.array_id);
+    setForgeIsAlternate(!!p.is_alternate);
     setEditIndex(idx);
     setShowForge(true);
   };
+
+  const startNewArray = () => {
+    setForgeArrayId(uid());
+    setForgeIsAlternate(false);
+    setEditIndex(null);
+    setShowForge(true);
+  };
+
+  const addAlternate = (arrayId: string) => {
+    setForgeArrayId(arrayId);
+    setForgeIsAlternate(true);
+    setEditIndex(null);
+    setShowForge(true);
+  };
+
+  // Group powers: standalone and arrays
+  const arrays = new Map<string, PowerEntry[]>();
+  const standalone: { power: PowerEntry; idx: number }[] = [];
+  powers.forEach((p, i) => {
+    if (p.array_id) {
+      const arr = arrays.get(p.array_id) ?? [];
+      arr.push({ ...p, _idx: i } as any);
+      arrays.set(p.array_id, arr);
+    } else {
+      standalone.push({ power: p, idx: i });
+    }
+  });
+
+  const PowerCard = ({ p, idx, indent }: { p: PowerEntry; idx: number; indent?: boolean }) => (
+    <div className={`bg-gray-800 rounded-lg p-3 ${indent ? 'ml-4 border-l-2 border-hero-600/30' : ''}`}>
+      <div className="flex items-center justify-between">
+        <div>
+          {p.is_alternate && <span className="text-[9px] text-hero-400 mr-1.5">↳ ALT</span>}
+          <span className="text-sm font-semibold text-white">{p.name || p.effect}</span>
+          <span className="text-[10px] text-gray-500 ml-2">{p.effect} {p.dp}dP</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-hero-400 font-mono">{p.is_alternate ? '1' : p.final_cost} PP</span>
+          <button onClick={() => startEdit(idx)} className="text-[10px] text-gray-400 hover:text-white">✎</button>
+          <button onClick={() => removePower(idx)} className="text-[10px] text-red-400 hover:text-red-300">✕</button>
+        </div>
+      </div>
+      {p.extras.length > 0 && (
+        <div className="text-[10px] text-green-400 mt-1">
+          +{p.extras.map(e => e.name + (e.ranks && e.ranks > 1 ? ` ${e.ranks}` : '')).join(', ')}
+        </div>
+      )}
+      {p.flaws.length > 0 && (
+        <div className="text-[10px] text-red-400 mt-0.5">
+          −{p.flaws.map(f => f.name + (f.ranks && f.ranks > 1 ? ` ${f.ranks}` : '')).join(', ')}
+        </div>
+      )}
+      {p.descriptors.length > 0 && (
+        <div className="flex gap-1 mt-1 flex-wrap">
+          {p.descriptors.map(d => (
+            <span key={d} className="text-[9px] bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded">{d}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="bg-gray-900 rounded-xl border border-gray-800 p-5">
@@ -455,64 +580,80 @@ function PowersBlock({
         <h2 className="text-lg font-bold text-hero-400">Poderes</h2>
         <span className="text-xs text-gray-500">{totalPP} PP</span>
       </div>
-      {powers.length > 0 && (
+
+      {/* Standalone powers */}
+      {standalone.length > 0 && (
         <div className="space-y-2 mb-3">
-          {powers.map((p, i) => (
-            <div key={i} className="bg-gray-800 rounded-lg p-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-sm font-semibold text-white">{p.name || p.effect}</span>
-                  <span className="text-[10px] text-gray-500 ml-2">{p.effect} {p.dp}dP</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-hero-400 font-mono">{p.final_cost} PP</span>
-                  <button onClick={() => startEdit(i)} className="text-[10px] text-gray-400 hover:text-white">✎</button>
-                  <button onClick={() => removePower(i)} className="text-[10px] text-red-400 hover:text-red-300">✕</button>
-                </div>
-              </div>
-              {p.extras.length > 0 && (
-                <div className="text-[10px] text-green-400 mt-1">
-                  +{p.extras.map(e => e.name + (e.ranks && e.ranks > 1 ? ` ${e.ranks}` : '')).join(', ')}
-                </div>
-              )}
-              {p.flaws.length > 0 && (
-                <div className="text-[10px] text-red-400 mt-0.5">
-                  −{p.flaws.map(f => f.name + (f.ranks && f.ranks > 1 ? ` ${f.ranks}` : '')).join(', ')}
-                </div>
-              )}
-              {p.descriptors.length > 0 && (
-                <div className="flex gap-1 mt-1 flex-wrap">
-                  {p.descriptors.map(d => (
-                    <span key={d} className="text-[9px] bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded">{d}</span>
-                  ))}
-                </div>
-              )}
-            </div>
+          {standalone.map(({ power, idx }) => (
+            <PowerCard key={idx} p={power} idx={idx} />
           ))}
         </div>
       )}
-      <button
-        onClick={() => { setEditIndex(null); setShowForge(true); }}
-        className="text-sm bg-hero-600 hover:bg-hero-700 text-white px-4 py-2 rounded-lg w-full transition"
-      >
-        + Criar Poder
-      </button>
+
+      {/* Power Arrays */}
+      {[...arrays.entries()].map(([arrayId, arrPowers]) => {
+        const base = arrPowers.find(p => !(p as any).is_alternate);
+        const alts = arrPowers.filter(p => (p as any).is_alternate);
+        const arrayCost = (base ? base.final_cost : 0) + alts.length;
+        return (
+          <div key={arrayId} className="mb-3 bg-gray-800/50 rounded-xl border border-hero-600/20 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-hero-400">⚡ Arranjo de Poderes</span>
+              <span className="text-[10px] text-gray-500">{arrayCost} PP total</span>
+            </div>
+            <div className="space-y-2">
+              {base && <PowerCard p={base} idx={(base as any)._idx} />}
+              {alts.map(p => (
+                <PowerCard key={(p as any)._idx} p={p} idx={(p as any)._idx} indent />
+              ))}
+            </div>
+            <button
+              onClick={() => addAlternate(arrayId)}
+              className="mt-2 text-[11px] text-hero-400 hover:text-hero-300 transition"
+            >
+              + Poder Alternativo (1 PP)
+            </button>
+          </div>
+        );
+      })}
+
+      <div className="flex gap-2">
+        <button
+          onClick={() => { setForgeArrayId(undefined); setForgeIsAlternate(false); setEditIndex(null); setShowForge(true); }}
+          className="flex-1 text-sm bg-hero-600 hover:bg-hero-700 text-white px-4 py-2 rounded-lg transition"
+        >
+          + Criar Poder
+        </button>
+        <button
+          onClick={startNewArray}
+          className="text-sm bg-gray-800 hover:bg-gray-700 text-hero-400 px-4 py-2 rounded-lg border border-hero-600/30 transition"
+        >
+          + Arranjo
+        </button>
+      </div>
 
       {showForge && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
           <div className="bg-gray-900 rounded-2xl border border-gray-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-gray-900 border-b border-gray-800 p-4 flex items-center justify-between z-10">
               <h3 className="text-lg font-bold text-hero-400">
-                {editIndex !== null ? 'Editar Poder' : 'Power Forge — Criar Poder'}
+                {editIndex !== null ? 'Editar Poder' : forgeIsAlternate ? 'Poder Alternativo (1 PP)' : forgeArrayId ? 'Poder Base do Arranjo' : 'Power Forge — Criar Poder'}
               </h3>
-              <button onClick={() => setShowForge(false)} className="text-gray-400 hover:text-white text-xl">✕</button>
+              <button onClick={() => { setShowForge(false); setForgeArrayId(undefined); setForgeIsAlternate(false); }} className="text-gray-400 hover:text-white text-xl">✕</button>
             </div>
+            {forgeIsAlternate && (
+              <div className="px-4 pt-2">
+                <div className="text-[11px] bg-hero-600/10 border border-hero-600/20 rounded-lg px-3 py-2 text-hero-300">
+                  💡 Poder Alternativo: custa apenas 1 PP. Seu custo em PP não pode exceder o do poder base do arranjo. Só pode usar um poder do arranjo por turno.
+                </div>
+              </div>
+            )}
             <div className="p-4">
               <PowerForge
                 plCap={plCap}
                 initialPower={editIndex !== null ? powers[editIndex] : undefined}
                 onSave={addPower}
-                onCancel={() => setShowForge(false)}
+                onCancel={() => { setShowForge(false); setForgeArrayId(undefined); setForgeIsAlternate(false); }}
               />
             </div>
           </div>
@@ -648,7 +789,7 @@ export default function CharacterSheet() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [rollResult, setRollResult] = useState<{ result: RollResult; label: string } | null>(null);
-  const [tab, setTab] = useState<'build' | 'play'>('build');
+  const [tab, setTab] = useState<'build' | 'play' | 'bio'>('build');
 
   const load = useCallback(() => {
     if (!id) return;
@@ -690,6 +831,7 @@ export default function CharacterSheet() {
   const TABS = [
     { key: 'build' as const, label: 'Construção' },
     { key: 'play' as const, label: 'Jogo' },
+    { key: 'bio' as const, label: 'Identidade' },
   ];
 
   return (
@@ -764,6 +906,77 @@ export default function CharacterSheet() {
             <BaseArchitect
               baseHq={char.base_hq}
               onChange={base_hq => save({ base_hq })}
+            />
+          </div>
+          {/* Notes */}
+          <div className="lg:col-span-2 bg-gray-900 rounded-xl border border-gray-800 p-5">
+            <h2 className="text-lg font-bold text-hero-400 mb-3">Anotações</h2>
+            <textarea
+              value={char.notes}
+              onChange={e => save({ notes: e.target.value })}
+              rows={4}
+              placeholder="Anotações livres sobre o personagem..."
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm text-white resize-none outline-none focus:border-hero-500"
+            />
+          </div>
+        </div>
+      )}
+
+      {tab === 'bio' && (
+        <div className="space-y-4 max-w-2xl">
+          <div className="bg-gray-900 rounded-xl border border-gray-800 p-5 space-y-4">
+            <h2 className="text-lg font-bold text-hero-400">Identidade do Herói</h2>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Nome do Herói</label>
+              <input
+                type="text"
+                value={char.name}
+                onChange={e => save({ name: e.target.value })}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white outline-none focus:border-hero-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Conceito</label>
+              <input
+                type="text"
+                value={char.concept}
+                onChange={e => save({ concept: e.target.value })}
+                placeholder="Ex: Vigilante noturno com poderes sombrios"
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white outline-none focus:border-hero-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Descritores de Origem</label>
+              <textarea
+                value={char.origin_descriptors}
+                onChange={e => save({ origin_descriptors: e.target.value })}
+                rows={3}
+                placeholder="Descreva a origem dos poderes: Mutante? Tecnológico? Mágico? Alienígena?"
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm text-white resize-none outline-none focus:border-hero-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Nível de Poder</label>
+              <select
+                value={char.power_level}
+                onChange={e => save({ power_level: Number(e.target.value) })}
+                className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white outline-none"
+              >
+                {[3, 5, 7, 10, 13, 15].map(pl => (
+                  <option key={pl} value={pl}>NP {pl} — {pl <= 3 ? 'Início' : pl <= 5 ? 'Agentes' : pl <= 7 ? 'Super-humanos' : pl <= 10 ? 'Padrão' : pl <= 13 ? 'Icônicos' : 'Cósmicos'} ({pl <= 3 ? 45 : pl <= 5 ? 75 : pl <= 7 ? 105 : pl <= 10 ? 150 : pl <= 13 ? 195 : 225} PP)</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {/* Notes */}
+          <div className="bg-gray-900 rounded-xl border border-gray-800 p-5">
+            <h2 className="text-lg font-bold text-hero-400 mb-3">Anotações</h2>
+            <textarea
+              value={char.notes}
+              onChange={e => save({ notes: e.target.value })}
+              rows={6}
+              placeholder="História, aparência, personalidade, aliados, inimigos..."
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm text-white resize-none outline-none focus:border-hero-500"
             />
           </div>
         </div>

@@ -10,6 +10,27 @@ _ATTR_MAX_RANK = 6
 # Power Level → initial PP
 PL_TABLE = {3: 45, 5: 75, 7: 105, 10: 150, 13: 195, 15: 225}
 
+# Advantages that modify defenses
+_DEFENSE_ADVANTAGES = {
+    "dodge focus": "dodge",
+    "esquiva aprimorada": "dodge",
+    "improved defense": "dodge",
+    "close attack": "parry",
+    "ataque corpo a corpo": "parry",
+    "defensive roll": "fortitude",
+    "rolamento defensivo": "fortitude",
+    "iron will": "willpower",
+    "vontade de ferro": "willpower",
+}
+
+# Equipment items that grant Protection/Vitalidade bonus
+_ARMOR_ITEMS = {
+    "colete protetor": 2,
+    "armadura tática": 4,
+    "capacete": 1,
+    "escudo": 2,
+}
+
 
 def attr_pp_cost(rank: int) -> int:
     """PP cost for a single attribute at given rank (relative to free rank 2)."""
@@ -32,7 +53,21 @@ def calc_power_cost(power: dict) -> int:
 
 
 def calc_powers_pp(powers: list[dict]) -> int:
-    return sum(calc_power_cost(p) for p in powers)
+    """Standalone powers cost full. Array base costs full; alternates cost 1 PP each."""
+    total = 0
+    arrays: dict[str, list[dict]] = {}
+    for p in powers:
+        aid = p.get("array_id")
+        if aid:
+            arrays.setdefault(aid, []).append(p)
+        else:
+            total += calc_power_cost(p)
+    for arr in arrays.values():
+        base = next((p for p in arr if not p.get("is_alternate")), None)
+        if base:
+            total += calc_power_cost(base)
+        total += sum(1 for p in arr if p.get("is_alternate"))
+    return total
 
 
 def calc_advantages_pp(advantages: list[dict]) -> int:
@@ -58,6 +93,28 @@ def calc_total_pp_spent(char_data: dict) -> int:
     )
 
 
+def _get_enhanced_defenses(powers: list[dict]) -> dict[str, int]:
+    """Extract defense bonuses from Enhanced Trait powers."""
+    bonuses: dict[str, int] = {"dodge": 0, "parry": 0, "fortitude": 0, "willpower": 0}
+    for p in powers:
+        effect = (p.get("effect", "") or "").lower()
+        if effect not in ("enhanced trait", "atributo aprimorado", "enhanced_trait"):
+            continue
+        name_lower = (p.get("name", "") or "").lower()
+        dp = p.get("dp", 0)
+        # If the power name references a specific defense or attribute
+        for keyword, defense in [
+            ("esquiva", "dodge"), ("dodge", "dodge"), ("agilidade", "dodge"), ("agi", "dodge"),
+            ("aparar", "parry"), ("parry", "parry"), ("combate", "parry"), ("cmb", "parry"),
+            ("fortitude", "fortitude"), ("resistência", "fortitude"), ("res", "fortitude"),
+            ("vontade", "willpower"), ("willpower", "willpower"), ("percepção", "willpower"), ("per", "willpower"),
+        ]:
+            if keyword in name_lower:
+                bonuses[defense] += dp
+                break
+    return bonuses
+
+
 def calc_vitalidade_max(attrs: dict, powers: list[dict], equipment: list[dict]) -> int:
     """Vitalidade = 3 + RES + Protection bonuses + Force Field bonuses + armor."""
     res = attrs.get("RES", 2)
@@ -71,20 +128,44 @@ def calc_vitalidade_max(attrs: dict, powers: list[dict], equipment: list[dict]) 
         elif effect in ("force field", "campo de força", "force_field"):
             base += p.get("dp", 0)
 
-    # Armor from equipment
+    # Armor from equipment (by item name or explicit vitalidade_bonus)
     for eq in equipment:
-        base += eq.get("vitalidade_bonus", 0)
+        bonus = eq.get("vitalidade_bonus", 0)
+        if not bonus:
+            item_name = (eq.get("name", "") or "").lower()
+            bonus = _ARMOR_ITEMS.get(item_name, 0)
+        base += bonus
 
     return base
 
 
-def calc_defenses(attrs: dict) -> dict:
-    return {
+def calc_defenses(attrs: dict, advantages: list[dict] | None = None,
+                  powers: list[dict] | None = None) -> dict:
+    """Calculate defenses from attributes + advantage bonuses + Enhanced Trait powers."""
+    advantages = advantages or []
+    powers = powers or []
+
+    base = {
         "dodge": attrs.get("AGI", 2),
         "parry": attrs.get("CMB", 2),
         "fortitude": attrs.get("RES", 2),
         "willpower": attrs.get("PER", 2),
     }
+
+    # Advantage bonuses (each rank = +1)
+    for adv in advantages:
+        name_lower = (adv.get("name", "") or "").lower()
+        ranks = adv.get("ranks", 1)
+        target = _DEFENSE_ADVANTAGES.get(name_lower)
+        if target:
+            base[target] += ranks
+
+    # Enhanced Trait power bonuses
+    enhanced = _get_enhanced_defenses(powers)
+    for k, v in enhanced.items():
+        base[k] += v
+
+    return base
 
 
 def recalculate_character(char_data: dict) -> dict:
@@ -98,7 +179,7 @@ def recalculate_character(char_data: dict) -> dict:
     pp_total = PL_TABLE.get(pl, 150)
     pp_spent = calc_total_pp_spent(char_data)
     vit_max = calc_vitalidade_max(attrs, powers, equipment)
-    defenses = calc_defenses(attrs)
+    defenses = calc_defenses(attrs, advantages, powers)
 
     return {
         "pp_total": pp_total,
