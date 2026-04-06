@@ -68,6 +68,7 @@ export interface CharacterSummary {
   pp_spent: number;
   vitalidade_max: number;
   vitalidade_current: number;
+  avatar_url?: string;
 }
 
 export function listCharacters() {
@@ -94,6 +95,26 @@ export function updateCharacter(id: number, data: Record<string, unknown>) {
 
 export function deleteCharacter(id: number) {
   return request<void>(`/api/characters/${id}`, { method: 'DELETE' });
+}
+
+export async function uploadAvatar(characterId: number, file: File): Promise<{ avatar_url: string }> {
+  const token = localStorage.getItem('token');
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${BASE}/api/characters/${characterId}/avatar`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(body.detail || res.statusText);
+  }
+  return res.json();
+}
+
+export function deleteAvatar(characterId: number) {
+  return request<void>(`/api/characters/${characterId}/avatar`, { method: 'DELETE' });
 }
 
 /* ─── Tables ─── */
@@ -184,6 +205,7 @@ export interface SessionPlayer {
   parry: number;
   fortitude: number;
   willpower: number;
+  avatar_url: string;
   status: string;
 }
 

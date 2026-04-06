@@ -239,6 +239,7 @@ async def get_table_details(
             "parry": char.parry,
             "fortitude": char.fortitude,
             "willpower": char.willpower,
+            "avatar_url": char.avatar_url or "",
             "status": tc.status,
         })
 

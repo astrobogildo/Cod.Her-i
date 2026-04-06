@@ -45,6 +45,7 @@ class Character(Base):
     willpower: Mapped[int] = mapped_column(Integer, default=2)
 
     notes: Mapped[str] = mapped_column(Text, default="")
+    avatar_url: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

@@ -5,7 +5,7 @@ import { listCharacters, listTables, CharacterSummary, TableSummary } from '../a
 import CharactersPage from './CharactersPage';
 import TablesPage from './TablesPage';
 
-function Sidebar() {
+function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { user, logout } = useAuth();
   const location = useLocation();
 
@@ -18,17 +18,27 @@ function Sidebar() {
   const isAdmin = user?.is_admin;
 
   return (
-    <aside className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col min-h-screen">
-      <div className="p-6 border-b border-gray-800">
-        <h2 className="text-xl font-bold text-hero-400">Código: Herói</h2>
-        <p className="text-xs text-gray-500 mt-1">v2.0</p>
-      </div>
+    <>
+      {/* Backdrop (mobile only) */}
+      {open && <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={onClose} />}
+
+      <aside className={`fixed md:static inset-y-0 left-0 z-50 w-64 bg-gray-900 border-r border-gray-800 flex flex-col min-h-screen transform transition-transform duration-300 ease-in-out ${
+        open ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+      }`}>
+        <div className="p-6 border-b border-gray-800 flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-hero-400">Código: Herói</h2>
+            <p className="text-xs text-gray-500 mt-1">v2.0</p>
+          </div>
+          <button onClick={onClose} className="md:hidden text-gray-400 hover:text-white text-lg">✕</button>
+        </div>
 
       <nav className="flex-1 p-4 space-y-1">
         {links.map(l => (
           <Link
             key={l.to}
             to={l.to}
+            onClick={onClose}
             className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition
               ${location.pathname === l.to ? 'bg-hero-600/20 text-hero-400' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
           >
@@ -42,7 +52,7 @@ function Sidebar() {
             <div className="mt-4 mb-1 px-4 text-[10px] text-gray-600 uppercase tracking-wider">Administração</div>
             <Link
               to="/tables"
-              onClick={() => { setTimeout(() => window.dispatchEvent(new CustomEvent('open-admin-tab')), 100); }}
+              onClick={() => { onClose(); setTimeout(() => window.dispatchEvent(new CustomEvent('open-admin-tab')), 100); }}
               className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium text-yellow-500 hover:bg-yellow-900/20 hover:text-yellow-400 transition"
             >
               <span>⚙️</span>
@@ -71,6 +81,7 @@ function Sidebar() {
         </div>
       </div>
     </aside>
+    </>
   );
 }
 
@@ -256,16 +267,26 @@ function TablesPlaceholder() {
 }
 
 export default function DashboardPage() {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
   return (
     <div className="flex min-h-screen bg-gray-950">
-      <Sidebar />
-      <main className="flex-1 p-8 overflow-y-auto">
-        <Routes>
-          <Route index element={<Home />} />
-          <Route path="characters/*" element={<CharactersPage />} />
-          <Route path="tables" element={<TablesPlaceholder />} />
-        </Routes>
-      </main>
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Mobile header with hamburger */}
+        <header className="md:hidden flex items-center justify-between bg-gray-900 border-b border-gray-800 px-4 py-3 shrink-0">
+          <button onClick={() => setSidebarOpen(true)} className="text-gray-400 hover:text-white text-xl">☰</button>
+          <span className="text-sm font-bold text-hero-400">Código: Herói</span>
+          <div className="w-6" />
+        </header>
+        <main className="flex-1 p-4 md:p-8 overflow-y-auto">
+          <Routes>
+            <Route index element={<Home />} />
+            <Route path="characters/*" element={<CharactersPage />} />
+            <Route path="tables" element={<TablesPlaceholder />} />
+          </Routes>
+        </main>
+      </div>
     </div>
   );
 }

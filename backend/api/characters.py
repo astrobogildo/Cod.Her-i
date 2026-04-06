@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+import base64
+import os
 
 from backend.db.database import get_db
 from backend.models.user import User
@@ -132,4 +134,54 @@ async def delete_character(
     if not char:
         raise HTTPException(status_code=404, detail="Personagem não encontrado")
     await db.delete(char)
+    await db.commit()
+
+
+# ── Avatar upload (max 2MB, stored as base64 data-URI) ──────
+
+_MAX_AVATAR_BYTES = 2 * 1024 * 1024  # 2 MB
+_ALLOWED_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif"}
+
+
+@router.post("/{character_id}/avatar")
+async def upload_avatar(
+    character_id: int,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Character).where(Character.id == character_id, Character.user_id == current_user.id)
+    )
+    char = result.scalar_one_or_none()
+    if not char:
+        raise HTTPException(status_code=404, detail="Personagem não encontrado")
+
+    content_type = file.content_type or ""
+    if content_type not in _ALLOWED_TYPES:
+        raise HTTPException(status_code=400, detail="Formato deve ser PNG, JPEG, WebP ou GIF")
+
+    data = await file.read()
+    if len(data) > _MAX_AVATAR_BYTES:
+        raise HTTPException(status_code=400, detail="Imagem muito grande (máx 2MB)")
+
+    b64 = base64.b64encode(data).decode()
+    char.avatar_url = f"data:{content_type};base64,{b64}"
+    await db.commit()
+    return {"avatar_url": char.avatar_url}
+
+
+@router.delete("/{character_id}/avatar", status_code=204)
+async def delete_avatar(
+    character_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Character).where(Character.id == character_id, Character.user_id == current_user.id)
+    )
+    char = result.scalar_one_or_none()
+    if not char:
+        raise HTTPException(status_code=404, detail="Personagem não encontrado")
+    char.avatar_url = ""
     await db.commit()

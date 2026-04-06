@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getCharacter, updateCharacter, rollDice, RollResult } from '../api';
+import { getCharacter, updateCharacter, rollDice, RollResult, uploadAvatar, deleteAvatar } from '../api';
 import { useCatalog } from '../context/CatalogContext';
 import PowerForge from '../components/PowerForge';
 import EquipmentArmory from '../components/EquipmentArmory';
@@ -32,6 +32,7 @@ interface CharacterFull {
   fortitude: number;
   willpower: number;
   notes: string;
+  avatar_url: string;
 }
 
 export interface PowerEntry {
@@ -781,6 +782,62 @@ function PPBar({ spent, total }: { spent: number; total: number }) {
 }
 
 /* ═══════════════════════════════════════════════
+   AVATAR UPLOAD
+   ═══════════════════════════════════════════════ */
+function AvatarUpload({ charId, avatarUrl, onUpdate }: { charId: number; avatarUrl: string; onUpdate: () => void }) {
+  const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+
+  const handleFile = async (file: File) => {
+    if (file.size > 2 * 1024 * 1024) { alert('Imagem muito grande (máx 2MB)'); return; }
+    if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type)) { alert('Formato inválido. Use PNG, JPEG, WebP ou GIF.'); return; }
+    setUploading(true);
+    try { await uploadAvatar(charId, file); onUpdate(); } catch (e) { console.error(e); alert('Erro ao enviar avatar'); }
+    finally { setUploading(false); }
+  };
+
+  const handleDrop = (e: React.DragEvent) => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); };
+  const handleRemove = async () => { if (!confirm('Remover avatar?')) return; try { await deleteAvatar(charId); onUpdate(); } catch {} };
+
+  return (
+    <div className="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <h2 className="text-lg font-bold text-hero-400 mb-4">Avatar</h2>
+      <div className="flex items-start gap-5">
+        {avatarUrl ? (
+          <div className="relative group">
+            <img src={avatarUrl} alt="Avatar" className="w-24 h-24 rounded-2xl object-cover border-2 border-gray-700" />
+            <button onClick={handleRemove}
+              className="absolute -top-2 -right-2 bg-red-600 hover:bg-red-500 text-white w-6 h-6 rounded-full text-xs opacity-0 group-hover:opacity-100 transition">✕</button>
+          </div>
+        ) : (
+          <div className="w-24 h-24 rounded-2xl bg-gray-800 border-2 border-dashed border-gray-700 flex items-center justify-center text-gray-600 text-3xl">?</div>
+        )}
+        <div className="flex-1">
+          <div
+            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+            className={`border-2 border-dashed rounded-xl p-4 text-center transition-all cursor-pointer ${dragOver ? 'border-hero-500 bg-hero-600/10' : 'border-gray-700 hover:border-gray-600'}`}
+            onClick={() => document.getElementById(`avatar-input-${charId}`)?.click()}
+          >
+            <input id={`avatar-input-${charId}`} type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden"
+              onChange={e => { if (e.target.files?.[0]) handleFile(e.target.files[0]); }} />
+            {uploading ? (
+              <span className="text-sm text-hero-400">Enviando...</span>
+            ) : (
+              <div>
+                <p className="text-sm text-gray-400">Arraste uma imagem ou clique para selecionar</p>
+                <p className="text-[10px] text-gray-600 mt-1">PNG, JPEG, WebP ou GIF • Máx 2MB • Sem fundo (ideal)</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════
    MAIN CHARACTER SHEET
    ═══════════════════════════════════════════════ */
 export default function CharacterSheet() {
@@ -924,6 +981,9 @@ export default function CharacterSheet() {
 
       {tab === 'bio' && (
         <div className="space-y-4 max-w-2xl">
+          {/* Avatar upload */}
+          <AvatarUpload charId={char.id} avatarUrl={char.avatar_url} onUpdate={load} />
+
           <div className="bg-gray-900 rounded-xl border border-gray-800 p-5 space-y-4">
             <h2 className="text-lg font-bold text-hero-400">Identidade do Herói</h2>
             <div>

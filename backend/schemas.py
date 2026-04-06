@@ -101,6 +101,7 @@ class CharacterResponse(BaseModel):
     fortitude: int
     willpower: int
     notes: str
+    avatar_url: str = ""
 
     class Config:
         from_attributes = True
