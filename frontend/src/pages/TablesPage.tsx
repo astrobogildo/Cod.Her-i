@@ -298,6 +298,13 @@ export default function TablesPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Listen for sidebar "Gerenciar Usuários" click
+  useEffect(() => {
+    const handler = () => setTab('admin');
+    window.addEventListener('open-admin-tab', handler);
+    return () => window.removeEventListener('open-admin-tab', handler);
+  }, []);
+
   const reload = () => {
     listTables().then(setTables).catch(console.error);
   };
