@@ -258,3 +258,104 @@ export function rollDice(pool_size: number, hero_dice: number, tn: number, opts?
 export function getSystemCatalog() {
   return request<Record<string, unknown[]>>('/api/system/catalog');
 }
+
+/* ─── Encounter / Combat ─── */
+export interface CombatZone {
+  id: string;
+  name: string;
+  character_ids: number[];
+}
+
+export interface InitiativeEntry {
+  character_id: number;
+  initiative: number;
+  roll_detail?: string;
+}
+
+export interface PendingTest {
+  id: string;
+  label: string;
+  attribute: string;
+  tn: number;
+  target_character_ids: number[];
+  results: { character_id: number; successes: number; complications: number; passed: boolean }[];
+}
+
+export interface CombatState {
+  active: boolean;
+  round: number;
+  current_turn_index: number;
+  zones: CombatZone[];
+  initiative_order: InitiativeEntry[];
+  pending_tests: PendingTest[];
+}
+
+export function startEncounter(tableId: number, zoneNames: string[]) {
+  return request<CombatState>(`/api/tables/${tableId}/encounter/start`, {
+    method: 'POST', body: JSON.stringify({ zone_names: zoneNames }),
+  });
+}
+
+export function endEncounter(tableId: number) {
+  return request<{ detail: string }>(`/api/tables/${tableId}/encounter/end`, { method: 'POST' });
+}
+
+export function getEncounter(tableId: number) {
+  return request<CombatState>(`/api/tables/${tableId}/encounter`);
+}
+
+export function createZone(tableId: number, name: string) {
+  return request<CombatState>(`/api/tables/${tableId}/encounter/zones`, {
+    method: 'POST', body: JSON.stringify({ name }),
+  });
+}
+
+export function deleteZone(tableId: number, zoneId: string) {
+  return request<CombatState>(`/api/tables/${tableId}/encounter/zones/${zoneId}`, { method: 'DELETE' });
+}
+
+export function renameZone(tableId: number, zoneId: string, name: string) {
+  return request<CombatState>(`/api/tables/${tableId}/encounter/zones/rename`, {
+    method: 'PATCH', body: JSON.stringify({ zone_id: zoneId, name }),
+  });
+}
+
+export function moveCharacterZone(tableId: number, characterId: number, zoneId: string) {
+  return request<CombatState>(`/api/tables/${tableId}/encounter/move`, {
+    method: 'POST', body: JSON.stringify({ character_id: characterId, zone_id: zoneId }),
+  });
+}
+
+export function setInitiative(tableId: number, characterId: number, initiative: number) {
+  return request<CombatState>(`/api/tables/${tableId}/encounter/initiative`, {
+    method: 'POST', body: JSON.stringify({ character_id: characterId, initiative }),
+  });
+}
+
+export function rollAllInitiative(tableId: number) {
+  return request<CombatState>(`/api/tables/${tableId}/encounter/roll-all-initiative`, { method: 'POST' });
+}
+
+export function nextTurn(tableId: number) {
+  return request<CombatState>(`/api/tables/${tableId}/encounter/next-turn`, { method: 'POST' });
+}
+
+export function prevTurn(tableId: number) {
+  return request<CombatState>(`/api/tables/${tableId}/encounter/prev-turn`, { method: 'POST' });
+}
+
+export function requestTest(tableId: number, label: string, attribute: string, tn: number, targetCharacterIds: number[]) {
+  return request<CombatState>(`/api/tables/${tableId}/encounter/request-test`, {
+    method: 'POST', body: JSON.stringify({ label, attribute, tn, target_character_ids: targetCharacterIds }),
+  });
+}
+
+export function submitTest(tableId: number, testId: string, characterId: number, successes: number, complications: number) {
+  return request<CombatState>(`/api/tables/${tableId}/encounter/submit-test`, {
+    method: 'POST', body: JSON.stringify({ test_id: testId, character_id: characterId, successes, complications }),
+  });
+}
+
+export function dismissTest(tableId: number, testId: string) {
+  return request<CombatState>(`/api/tables/${tableId}/encounter/tests/${testId}`, { method: 'DELETE' });
+}

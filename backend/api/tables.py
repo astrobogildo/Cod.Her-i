@@ -1,7 +1,9 @@
 import secrets
 import string
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -434,3 +436,429 @@ async def remove_player(
     await db.delete(link)
     await db.commit()
     return {"detail": "Jogador removido"}
+
+
+# ═══════════════════════════════════════════════════
+# ENCOUNTER / COMBAT SYSTEM
+# ═══════════════════════════════════════════════════
+
+class StartEncounterRequest(BaseModel):
+    zone_names: list[str] = Field(default_factory=lambda: ["Zona A"])
+
+
+class CreateZoneRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+
+
+class RenameZoneRequest(BaseModel):
+    zone_id: str
+    name: str = Field(min_length=1, max_length=60)
+
+
+class MoveCharacterRequest(BaseModel):
+    character_id: int
+    zone_id: str
+
+
+class SetInitiativeRequest(BaseModel):
+    character_id: int
+    initiative: int
+
+
+class AdvanceTurnRequest(BaseModel):
+    pass
+
+
+class RequestTestRequest(BaseModel):
+    """GM requests a generic test from one or all characters."""
+    label: str = Field(min_length=1, max_length=120)  # e.g. "Percepção DN 3"
+    attribute: str = ""  # e.g. "PER" — empty = any
+    tn: int = 0
+    target_character_ids: list[int] = Field(default_factory=list)  # empty = all players
+
+
+class TestResultRequest(BaseModel):
+    test_id: str
+    character_id: int
+    successes: int
+    complications: int = 0
+
+
+def _empty_combat_state() -> dict:
+    return {
+        "active": False,
+        "round": 0,
+        "current_turn_index": 0,
+        "zones": [],
+        "initiative_order": [],
+        "pending_tests": [],
+    }
+
+
+def _get_combat(table: GameTable) -> dict:
+    return table.combat_state or _empty_combat_state()
+
+
+@router.post("/{table_id}/encounter/start")
+async def start_encounter(
+    table_id: int,
+    body: StartEncounterRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Start a new encounter with initial zones. Resets combat state."""
+    table = await _require_table_access(table_id, current_user, db)
+    await _require_gm(table, current_user)
+
+    zones = []
+    for name in (body.zone_names or ["Zona A"]):
+        zones.append({"id": uuid.uuid4().hex[:8], "name": name, "character_ids": []})
+
+    cs = _empty_combat_state()
+    cs["active"] = True
+    cs["round"] = 1
+    cs["zones"] = zones
+    table.combat_state = cs
+    await db.commit()
+    return cs
+
+
+@router.post("/{table_id}/encounter/end")
+async def end_encounter(
+    table_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    table = await _require_table_access(table_id, current_user, db)
+    await _require_gm(table, current_user)
+    table.combat_state = None
+    await db.commit()
+    return {"detail": "Encontro encerrado"}
+
+
+@router.get("/{table_id}/encounter")
+async def get_encounter(
+    table_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    table = await _require_table_access(table_id, current_user, db)
+    return table.combat_state or {"active": False}
+
+
+# ── Zones ────────────────────────────────────
+
+@router.post("/{table_id}/encounter/zones")
+async def create_zone(
+    table_id: int,
+    body: CreateZoneRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    table = await _require_table_access(table_id, current_user, db)
+    await _require_gm(table, current_user)
+    cs = _get_combat(table)
+    if not cs.get("active"):
+        raise HTTPException(400, "Nenhum encontro ativo")
+    new_zone = {"id": uuid.uuid4().hex[:8], "name": body.name, "character_ids": []}
+    cs["zones"].append(new_zone)
+    table.combat_state = cs
+    await db.commit()
+    return cs
+
+
+@router.delete("/{table_id}/encounter/zones/{zone_id}")
+async def delete_zone(
+    table_id: int,
+    zone_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    table = await _require_table_access(table_id, current_user, db)
+    await _require_gm(table, current_user)
+    cs = _get_combat(table)
+    if not cs.get("active"):
+        raise HTTPException(400, "Nenhum encontro ativo")
+    zone = next((z for z in cs["zones"] if z["id"] == zone_id), None)
+    if not zone:
+        raise HTTPException(404, "Zona não encontrada")
+    # Move characters to first zone (or remove if none left)
+    if cs["zones"] and zone["character_ids"]:
+        first = next((z for z in cs["zones"] if z["id"] != zone_id), None)
+        if first:
+            first["character_ids"].extend(zone["character_ids"])
+    cs["zones"] = [z for z in cs["zones"] if z["id"] != zone_id]
+    table.combat_state = cs
+    await db.commit()
+    return cs
+
+
+@router.patch("/{table_id}/encounter/zones/rename")
+async def rename_zone(
+    table_id: int,
+    body: RenameZoneRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    table = await _require_table_access(table_id, current_user, db)
+    await _require_gm(table, current_user)
+    cs = _get_combat(table)
+    zone = next((z for z in cs.get("zones", []) if z["id"] == body.zone_id), None)
+    if not zone:
+        raise HTTPException(404, "Zona não encontrada")
+    zone["name"] = body.name
+    table.combat_state = cs
+    await db.commit()
+    return cs
+
+
+# ── Character placement ──────────────────────
+
+@router.post("/{table_id}/encounter/move")
+async def move_character(
+    table_id: int,
+    body: MoveCharacterRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Move a character to a different zone. GM can move anyone; players their own."""
+    table = await _require_table_access(table_id, current_user, db)
+    cs = _get_combat(table)
+    if not cs.get("active"):
+        raise HTTPException(400, "Nenhum encontro ativo")
+
+    is_gm = table.gm_user_id == current_user.id or current_user.is_admin
+    if not is_gm:
+        # Players can only move their own characters
+        char_result = await db.execute(
+            select(Character).where(Character.id == body.character_id, Character.user_id == current_user.id)
+        )
+        if not char_result.scalar_one_or_none():
+            raise HTTPException(403, "Você só pode mover seus próprios personagens")
+
+    # Remove from all zones
+    for z in cs["zones"]:
+        z["character_ids"] = [cid for cid in z["character_ids"] if cid != body.character_id]
+    # Add to target zone
+    target = next((z for z in cs["zones"] if z["id"] == body.zone_id), None)
+    if not target:
+        raise HTTPException(404, "Zona não encontrada")
+    target["character_ids"].append(body.character_id)
+    table.combat_state = cs
+    await db.commit()
+    return cs
+
+
+# ── Initiative & Turns ───────────────────────
+
+@router.post("/{table_id}/encounter/initiative")
+async def set_initiative(
+    table_id: int,
+    body: SetInitiativeRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set initiative for a character. GM only."""
+    table = await _require_table_access(table_id, current_user, db)
+    await _require_gm(table, current_user)
+    cs = _get_combat(table)
+    if not cs.get("active"):
+        raise HTTPException(400, "Nenhum encontro ativo")
+
+    order = cs.get("initiative_order", [])
+    existing = next((e for e in order if e["character_id"] == body.character_id), None)
+    if existing:
+        existing["initiative"] = body.initiative
+    else:
+        order.append({"character_id": body.character_id, "initiative": body.initiative})
+    # Sort descending
+    order.sort(key=lambda x: x["initiative"], reverse=True)
+    cs["initiative_order"] = order
+    table.combat_state = cs
+    await db.commit()
+    return cs
+
+
+@router.post("/{table_id}/encounter/roll-all-initiative")
+async def roll_all_initiative(
+    table_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Roll initiative for all characters in the encounter. GM only."""
+    from backend.engine.dice import roll_pool
+    table = await _require_table_access(table_id, current_user, db)
+    await _require_gm(table, current_user)
+    cs = _get_combat(table)
+    if not cs.get("active"):
+        raise HTTPException(400, "Nenhum encontro ativo")
+
+    # Collect all character IDs from zones
+    all_char_ids = set()
+    for z in cs["zones"]:
+        all_char_ids.update(z["character_ids"])
+
+    if not all_char_ids:
+        raise HTTPException(400, "Nenhum personagem nas zonas")
+
+    # Fetch characters
+    chars_result = await db.execute(
+        select(Character).where(Character.id.in_(all_char_ids))
+    )
+    chars = {c.id: c for c in chars_result.scalars().all()}
+
+    order = []
+    for cid in all_char_ids:
+        char = chars.get(cid)
+        if not char:
+            continue
+        # Initiative pool = AGI rank
+        agi = char.attributes.get("AGI", 2)
+        result = roll_pool(agi, 0, 0)
+        order.append({
+            "character_id": cid,
+            "initiative": result["total_successes"],
+            "roll_detail": f"{agi}d10 → {result['total_successes']} sucessos",
+        })
+    order.sort(key=lambda x: x["initiative"], reverse=True)
+    cs["initiative_order"] = order
+    cs["current_turn_index"] = 0
+    table.combat_state = cs
+    await db.commit()
+    return cs
+
+
+@router.post("/{table_id}/encounter/next-turn")
+async def next_turn(
+    table_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Advance to next turn (or next round)."""
+    table = await _require_table_access(table_id, current_user, db)
+    await _require_gm(table, current_user)
+    cs = _get_combat(table)
+    if not cs.get("active"):
+        raise HTTPException(400, "Nenhum encontro ativo")
+
+    order = cs.get("initiative_order", [])
+    if not order:
+        raise HTTPException(400, "Sem ordem de iniciativa")
+
+    idx = cs.get("current_turn_index", 0) + 1
+    if idx >= len(order):
+        idx = 0
+        cs["round"] = cs.get("round", 1) + 1
+    cs["current_turn_index"] = idx
+    table.combat_state = cs
+    await db.commit()
+    return cs
+
+
+@router.post("/{table_id}/encounter/prev-turn")
+async def prev_turn(
+    table_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Go back one turn."""
+    table = await _require_table_access(table_id, current_user, db)
+    await _require_gm(table, current_user)
+    cs = _get_combat(table)
+    if not cs.get("active"):
+        raise HTTPException(400, "Nenhum encontro ativo")
+
+    order = cs.get("initiative_order", [])
+    if not order:
+        raise HTTPException(400, "Sem ordem de iniciativa")
+
+    idx = cs.get("current_turn_index", 0) - 1
+    if idx < 0:
+        idx = len(order) - 1
+        cs["round"] = max(1, cs.get("round", 1) - 1)
+    cs["current_turn_index"] = idx
+    table.combat_state = cs
+    await db.commit()
+    return cs
+
+
+# ── GM Test Requests ─────────────────────────
+
+@router.post("/{table_id}/encounter/request-test")
+async def request_test(
+    table_id: int,
+    body: RequestTestRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """GM requests a test from players."""
+    table = await _require_table_access(table_id, current_user, db)
+    await _require_gm(table, current_user)
+    cs = _get_combat(table)
+
+    test_entry = {
+        "id": uuid.uuid4().hex[:8],
+        "label": body.label,
+        "attribute": body.attribute,
+        "tn": body.tn,
+        "target_character_ids": body.target_character_ids,
+        "results": [],
+    }
+    cs.setdefault("pending_tests", []).append(test_entry)
+    table.combat_state = cs
+    await db.commit()
+    return cs
+
+
+@router.post("/{table_id}/encounter/submit-test")
+async def submit_test_result(
+    table_id: int,
+    body: TestResultRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Player submits a test result."""
+    table = await _require_table_access(table_id, current_user, db)
+    cs = _get_combat(table)
+
+    tests = cs.get("pending_tests", [])
+    test = next((t for t in tests if t["id"] == body.test_id), None)
+    if not test:
+        raise HTTPException(404, "Teste não encontrado")
+
+    # Verify player owns the character (unless GM)
+    is_gm = table.gm_user_id == current_user.id or current_user.is_admin
+    if not is_gm:
+        char_result = await db.execute(
+            select(Character).where(Character.id == body.character_id, Character.user_id == current_user.id)
+        )
+        if not char_result.scalar_one_or_none():
+            raise HTTPException(403, "Personagem não pertence a você")
+
+    # Add result
+    test["results"].append({
+        "character_id": body.character_id,
+        "successes": body.successes,
+        "complications": body.complications,
+        "passed": body.successes >= test["tn"] if test["tn"] else True,
+    })
+    table.combat_state = cs
+    await db.commit()
+    return cs
+
+
+@router.delete("/{table_id}/encounter/tests/{test_id}")
+async def dismiss_test(
+    table_id: int,
+    test_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """GM dismisses/clears a test request."""
+    table = await _require_table_access(table_id, current_user, db)
+    await _require_gm(table, current_user)
+    cs = _get_combat(table)
+    cs["pending_tests"] = [t for t in cs.get("pending_tests", []) if t["id"] != test_id]
+    table.combat_state = cs
+    await db.commit()
+    return cs
