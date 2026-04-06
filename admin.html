@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Código: Herói — Painel de Controle Local</title>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --card: #12121a;
+    --border: #1e1e2e;
+    --text: #e0e0e6;
+    --muted: #6b6b80;
+    --hero: #7c3aed;
+    --hero-hover: #6d28d9;
+    --green: #22c55e;
+    --yellow: #eab308;
+    --red: #ef4444;
+    --blue: #3b82f6;
+    --radius: 12px;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* Layout */
+  .app { max-width: 900px; margin: 0 auto; padding: 24px 16px 80px; }
+  header { text-align: center; padding: 32px 0 24px; }
+  header h1 { font-size: 1.8rem; color: var(--hero); margin-bottom: 4px; }
+  header p { color: var(--muted); font-size: 0.85rem; }
+
+  /* Stats */
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 28px; }
+  .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; text-align: center; }
+  .stat-card .num { font-size: 2rem; font-weight: 700; }
+  .stat-card .label { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+  .stat-card.users .num { color: var(--hero); }
+  .stat-card.chars .num { color: var(--blue); }
+  .stat-card.tables .num { color: var(--green); }
+
+  /* Toolbar */
+  .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+  .toolbar h2 { font-size: 1.15rem; }
+
+  /* Buttons */
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border: none; border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.15s; font-family: inherit; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary { background: var(--hero); color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: var(--hero-hover); }
+  .btn-danger { background: #7f1d1d; color: #fca5a5; }
+  .btn-danger:hover:not(:disabled) { background: #991b1b; }
+  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .btn-ghost:hover:not(:disabled) { background: var(--card); color: var(--text); }
+  .btn-sm { padding: 5px 10px; font-size: 0.75rem; }
+
+  /* User cards */
+  .user-list { display: flex; flex-direction: column; gap: 8px; }
+  .user-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; display: flex; align-items: center; gap: 16px; transition: border-color 0.15s; }
+  .user-card:hover { border-color: #2e2e44; }
+  .user-avatar { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; font-weight: 700; color: #fff; flex-shrink: 0; }
+  .user-avatar.admin { background: linear-gradient(135deg, #7c3aed, #a855f7); }
+  .user-avatar.gm { background: linear-gradient(135deg, #7c3aed, #6366f1); }
+  .user-avatar.player { background: linear-gradient(135deg, #3b82f6, #06b6d4); }
+  .user-info { flex: 1; min-width: 0; }
+  .user-info .name { font-weight: 600; font-size: 0.95rem; }
+  .user-info .meta { display: flex; gap: 12px; color: var(--muted); font-size: 0.75rem; margin-top: 3px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+  .badge-admin { background: rgba(234,179,8,0.15); color: #eab308; }
+  .badge-gm { background: rgba(124,58,237,0.15); color: #a78bfa; }
+  .badge-player { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .user-actions { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+
+  /* Modal */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
+  .modal { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 28px; width: 100%; max-width: 420px; }
+  .modal h3 { font-size: 1.1rem; color: var(--hero); margin-bottom: 16px; }
+  .modal .form-group { margin-bottom: 14px; }
+  .modal label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 4px; }
+  .modal input, .modal select { width: 100%; padding: 10px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 0.88rem; font-family: inherit; outline: none; transition: border-color 0.15s; }
+  .modal input:focus, .modal select:focus { border-color: var(--hero); }
+  .modal .actions { display: flex; gap: 8px; margin-top: 20px; }
+  .modal .actions .btn { flex: 1; justify-content: center; }
+
+  /* Toast */
+  .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: 10px; font-size: 0.85rem; font-weight: 500; z-index: 200; animation: slideIn 0.3s ease; }
+  .toast.success { background: #14532d; color: #86efac; border: 1px solid #166534; }
+  .toast.error { background: #7f1d1d; color: #fca5a5; border: 1px solid #991b1b; }
+  @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+  /* Empty state */
+  .empty { text-align: center; padding: 48px 16px; color: var(--muted); }
+  .empty .icon { font-size: 2.5rem; margin-bottom: 12px; }
+
+  /* Loading */
+  .loading { text-align: center; padding: 48px; color: var(--muted); }
+
+  /* Responsive */
+  @media (max-width: 600px) {
+    .stats { grid-template-columns: 1fr; }
+    .user-card { flex-wrap: wrap; }
+    .user-actions { width: 100%; justify-content: flex-start; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>🎭 Código: Herói</h1>
+    <p>Painel de Controle Local — Gerenciamento de Usuários</p>
+  </header>
+
+  <div class="stats" id="stats">
+    <div class="stat-card users"><div class="num" id="stat-users">-</div><div class="label">Usuários</div></div>
+    <div class="stat-card chars"><div class="num" id="stat-chars">-</div><div class="label">Personagens</div></div>
+    <div class="stat-card tables"><div class="num" id="stat-tables">-</div><div class="label">Mesas</div></div>
+  </div>
+
+  <div class="toolbar">
+    <h2>Usuários</h2>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost btn-sm" onclick="loadAll()">↻ Atualizar</button>
+      <button class="btn btn-primary" onclick="openCreateModal()">+ Novo Usuário</button>
+    </div>
+  </div>
+
+  <div id="user-list" class="user-list">
+    <div class="loading">Carregando...</div>
+  </div>
+</div>
+
+<!-- Create / Edit Modal -->
+<div class="modal-overlay" id="modal" style="display:none" onclick="event.target===this && closeModal()">
+  <div class="modal">
+    <h3 id="modal-title">Novo Usuário</h3>
+    <form id="modal-form" onsubmit="handleSubmit(event)">
+      <input type="hidden" id="f-id" />
+      <div class="form-group">
+        <label for="f-username">Nome de usuário (login)</label>
+        <input type="text" id="f-username" minlength="3" maxlength="50" required autocomplete="off" />
+      </div>
+      <div class="form-group" id="pw-group">
+        <label for="f-password">Senha</label>
+        <input type="password" id="f-password" minlength="4" maxlength="128" autocomplete="new-password" />
+      </div>
+      <div class="form-group">
+        <label for="f-display">Nome de exibição</label>
+        <input type="text" id="f-display" minlength="1" maxlength="100" required />
+      </div>
+      <div class="form-group">
+        <label for="f-role">Permissão</label>
+        <select id="f-role">
+          <option value="player">🎮 Jogador</option>
+          <option value="gm">🎭 Mestre</option>
+        </select>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="modal-submit">Criar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Reset Password Modal -->
+<div class="modal-overlay" id="pw-modal" style="display:none" onclick="event.target===this && closePwModal()">
+  <div class="modal">
+    <h3>🔑 Redefinir Senha</h3>
+    <p style="color:var(--muted);font-size:0.82rem;margin-bottom:16px" id="pw-user-label"></p>
+    <form onsubmit="handleResetPw(event)">
+      <input type="hidden" id="pw-uid" />
+      <div class="form-group">
+        <label for="pw-new">Nova senha</label>
+        <input type="password" id="pw-new" minlength="4" maxlength="128" required autocomplete="new-password" />
+      </div>
+      <div class="actions">
+        <button type="button" class="btn btn-ghost" onclick="closePwModal()">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Redefinir</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Confirm Delete Modal -->
+<div class="modal-overlay" id="del-modal" style="display:none" onclick="event.target===this && closeDelModal()">
+  <div class="modal">
+    <h3>⚠️ Excluir Usuário</h3>
+    <p style="color:var(--muted);font-size:0.85rem;margin-bottom:8px" id="del-label"></p>
+    <p style="color:#fca5a5;font-size:0.78rem;margin-bottom:16px">Isso remove o usuário, todos os personagens dele e vínculos com mesas.</p>
+    <input type="hidden" id="del-uid" />
+    <div class="actions">
+      <button class="btn btn-ghost" onclick="closeDelModal()">Cancelar</button>
+      <button class="btn btn-danger" onclick="handleDelete()">Excluir</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '/api/local-admin';
+let users = [];
+
+// ── API calls ──────────────────────────────
+
+async function api(path, opts = {}) {
+  const res = await fetch(`${API}${path}`, {
+    headers: { 'Content-Type': 'application/json', ...opts.headers },
+    ...opts,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || 'Erro');
+  return data;
+}
+
+// ── Load ───────────────────────────────────
+
+async function loadAll() {
+  try {
+    const [stats, u] = await Promise.all([api('/stats'), api('/users')]);
+    document.getElementById('stat-users').textContent = stats.users;
+    document.getElementById('stat-chars').textContent = stats.characters;
+    document.getElementById('stat-tables').textContent = stats.tables;
+    users = u;
+    renderUsers();
+  } catch (e) {
+    document.getElementById('user-list').innerHTML = `
+      <div class="empty">
+        <div class="icon">⚠️</div>
+        <p>Não foi possível conectar ao servidor.</p>
+        <p style="font-size:0.78rem;margin-top:8px">Certifique-se que o backend está rodando em <strong>localhost:8000</strong></p>
+      </div>`;
+  }
+}
+
+// ── Render users ───────────────────────────
+
+function renderUsers() {
+  const el = document.getElementById('user-list');
+  if (users.length === 0) {
+    el.innerHTML = `<div class="empty"><div class="icon">👤</div><p>Nenhum usuário. Crie o primeiro!</p></div>`;
+    return;
+  }
+  el.innerHTML = users.map(u => {
+    const roleClass = u.is_admin ? 'admin' : u.role;
+    const roleBadge = u.is_admin
+      ? '<span class="badge badge-admin">Admin</span>'
+      : u.role === 'gm'
+        ? '<span class="badge badge-gm">Mestre</span>'
+        : '<span class="badge badge-player">Jogador</span>';
+    const initials = u.display_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+    const isAdmin = u.is_admin;
+    return `
+      <div class="user-card">
+        <div class="user-avatar ${roleClass}">${initials}</div>
+        <div class="user-info">
+          <div class="name">${esc(u.display_name)} ${roleBadge}</div>
+          <div class="meta">
+            <span>@${esc(u.username)}</span>
+            <span>📝 ${u.character_count} personagen${u.character_count !== 1 ? 's' : ''}</span>
+            <span>🎲 ${u.table_count} mesa${u.table_count !== 1 ? 's' : ''}</span>
+          </div>
+        </div>
+        <div class="user-actions">
+          <button class="btn btn-ghost btn-sm" onclick="openEditModal(${u.id})">✏️ Editar</button>
+          <button class="btn btn-ghost btn-sm" onclick="openPwModal(${u.id})">🔑 Senha</button>
+          ${!isAdmin ? `<button class="btn btn-danger btn-sm" onclick="openDelModal(${u.id})">🗑️</button>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// ── Create modal ───────────────────────────
+
+function openCreateModal() {
+  document.getElementById('modal-title').textContent = '➕ Novo Usuário';
+  document.getElementById('modal-submit').textContent = 'Criar';
+  document.getElementById('f-id').value = '';
+  document.getElementById('f-username').value = '';
+  document.getElementById('f-username').disabled = false;
+  document.getElementById('f-password').value = '';
+  document.getElementById('f-password').required = true;
+  document.getElementById('pw-group').style.display = '';
+  document.getElementById('f-display').value = '';
+  document.getElementById('f-role').value = 'player';
+  document.getElementById('modal').style.display = '';
+  document.getElementById('f-username').focus();
+}
+
+function openEditModal(id) {
+  const u = users.find(x => x.id === id);
+  if (!u) return;
+  document.getElementById('modal-title').textContent = `✏️ Editar — ${u.display_name}`;
+  document.getElementById('modal-submit').textContent = 'Salvar';
+  document.getElementById('f-id').value = u.id;
+  document.getElementById('f-username').value = u.username;
+  document.getElementById('f-username').disabled = true;
+  document.getElementById('f-password').value = '';
+  document.getElementById('f-password').required = false;
+  document.getElementById('pw-group').style.display = 'none';
+  document.getElementById('f-display').value = u.display_name;
+  document.getElementById('f-role').value = u.is_admin ? 'gm' : u.role;
+  document.getElementById('modal').style.display = '';
+  document.getElementById('f-display').focus();
+}
+
+function closeModal() { document.getElementById('modal').style.display = 'none'; }
+
+async function handleSubmit(e) {
+  e.preventDefault();
+  const id = document.getElementById('f-id').value;
+  try {
+    if (id) {
+      await api(`/users/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          display_name: document.getElementById('f-display').value,
+          role: document.getElementById('f-role').value,
+        }),
+      });
+      toast('Usuário atualizado!');
+    } else {
+      await api('/users', {
+        method: 'POST',
+        body: JSON.stringify({
+          username: document.getElementById('f-username').value,
+          password: document.getElementById('f-password').value,
+          display_name: document.getElementById('f-display').value,
+          role: document.getElementById('f-role').value,
+        }),
+      });
+      toast('Usuário criado!');
+    }
+    closeModal();
+    loadAll();
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+// ── Reset password modal ───────────────────
+
+function openPwModal(id) {
+  const u = users.find(x => x.id === id);
+  if (!u) return;
+  document.getElementById('pw-uid').value = id;
+  document.getElementById('pw-user-label').textContent = `Redefinindo senha de: ${u.display_name} (@${u.username})`;
+  document.getElementById('pw-new').value = '';
+  document.getElementById('pw-modal').style.display = '';
+  document.getElementById('pw-new').focus();
+}
+
+function closePwModal() { document.getElementById('pw-modal').style.display = 'none'; }
+
+async function handleResetPw(e) {
+  e.preventDefault();
+  const id = document.getElementById('pw-uid').value;
+  const pw = document.getElementById('pw-new').value;
+  try {
+    await api(`/users/${id}/reset-password`, { method: 'POST', body: JSON.stringify({ new_password: pw }) });
+    toast('Senha redefinida!');
+    closePwModal();
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+// ── Delete modal ───────────────────────────
+
+function openDelModal(id) {
+  const u = users.find(x => x.id === id);
+  if (!u) return;
+  document.getElementById('del-uid').value = id;
+  document.getElementById('del-label').textContent = `Excluir "${u.display_name}" (@${u.username})?`;
+  document.getElementById('del-modal').style.display = '';
+}
+
+function closeDelModal() { document.getElementById('del-modal').style.display = 'none'; }
+
+async function handleDelete() {
+  const id = document.getElementById('del-uid').value;
+  try {
+    await api(`/users/${id}`, { method: 'DELETE' });
+    toast('Usuário excluído');
+    closeDelModal();
+    loadAll();
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+// ── Toast ──────────────────────────────────
+
+function toast(msg, type = 'success') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+// ── Init ───────────────────────────────────
+loadAll();
+</script>
+</body>
+</html>

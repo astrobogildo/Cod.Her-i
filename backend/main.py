@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from backend.db.database import init_db
 from backend.api.auth_routes import router as auth_router
@@ -11,6 +12,7 @@ from backend.api.characters import router as characters_router
 from backend.api.tables import router as tables_router
 from backend.api.rolls import router as rolls_router
 from backend.api.system_catalog import router as system_router
+from backend.api.local_admin import router as local_admin_router
 from backend.ws.hub import manager
 
 
@@ -41,11 +43,21 @@ app.include_router(characters_router)
 app.include_router(tables_router)
 app.include_router(rolls_router)
 app.include_router(system_router)
+app.include_router(local_admin_router)
 
 
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+# Serve admin panel HTML at /admin
+import os as _os
+_ADMIN_HTML = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "admin.html")
+
+@app.get("/admin")
+async def admin_panel():
+    return FileResponse(_ADMIN_HTML, media_type="text/html")
 
 
 # ─── WebSocket ──────────────────────────────────────────────
