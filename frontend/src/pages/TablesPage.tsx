@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   listTables,
@@ -281,6 +282,7 @@ function AdminPanel() {
 /* ═══ MAIN TABLES PAGE ═══ */
 export default function TablesPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [tables, setTables] = useState<TableSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -397,15 +399,25 @@ export default function TablesPage() {
                       <span className="text-sm font-mono bg-gray-800 text-hero-400 px-3 py-1 rounded-lg tracking-wider">
                         {t.code}
                       </span>
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(t.code);
-                        }}
-                        className="text-xs text-gray-500 hover:text-gray-300"
-                        title="Copiar código"
-                      >
-                        📋 Copiar
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(t.code);
+                          }}
+                          className="text-xs text-gray-500 hover:text-gray-300"
+                          title="Copiar código"
+                        >
+                          📋
+                        </button>
+                        {t.status !== 'archived' && (
+                          <button
+                            onClick={() => navigate(`/session/${t.id}`)}
+                            className="text-xs bg-hero-600 hover:bg-hero-700 text-white px-3 py-1.5 rounded-lg font-medium transition"
+                          >
+                            ▶ Entrar
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );

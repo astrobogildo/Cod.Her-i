@@ -125,6 +125,107 @@ export function joinTable(code: string, character_id: number) {
   });
 }
 
+export function getTableDetails(tableId: number) {
+  return request<SessionDetails>(`/api/tables/${tableId}/details`);
+}
+
+export function getTableRolls(tableId: number, limit = 50) {
+  return request<RollEntry[]>(`/api/tables/${tableId}/rolls?limit=${limit}`);
+}
+
+export function getTableChat(tableId: number, limit = 100) {
+  return request<ChatMsg[]>(`/api/tables/${tableId}/chat?limit=${limit}`);
+}
+
+export function postChatMessage(tableId: number, content: string, messageType = 'chat', targetUserId?: number) {
+  return request<ChatMsg>(`/api/tables/${tableId}/chat`, {
+    method: 'POST',
+    body: JSON.stringify({ content, message_type: messageType, target_user_id: targetUserId }),
+  });
+}
+
+export function startSession(tableId: number) {
+  return request<{ detail: string; status: string }>(`/api/tables/${tableId}/start`, { method: 'POST' });
+}
+
+export function pauseSession(tableId: number) {
+  return request<{ detail: string; status: string }>(`/api/tables/${tableId}/pause`, { method: 'POST' });
+}
+
+export function archiveSession(tableId: number) {
+  return request<{ detail: string; status: string }>(`/api/tables/${tableId}/archive`, { method: 'POST' });
+}
+
+export function removePlayer(tableId: number, characterId: number) {
+  return request<{ detail: string }>(`/api/tables/${tableId}/players/${characterId}`, { method: 'DELETE' });
+}
+
+export function getTableCharactersFull(tableId: number) {
+  return request<Record<string, unknown>[]>(`/api/tables/${tableId}/characters`);
+}
+
+/* ─── Session Types ─── */
+export interface SessionPlayer {
+  user_id: number;
+  display_name: string;
+  username: string;
+  character_id: number;
+  character_name: string;
+  character_concept: string;
+  power_level: number;
+  pp_total: number;
+  pp_spent: number;
+  vitalidade_max: number;
+  vitalidade_current: number;
+  ferimentos: number[];
+  active_conditions: string[];
+  hero_dice: number;
+  dodge: number;
+  parry: number;
+  fortitude: number;
+  willpower: number;
+  status: string;
+}
+
+export interface SessionDetails {
+  table: {
+    id: number;
+    name: string;
+    code: string;
+    power_level: number;
+    description: string;
+    status: string;
+    optional_rules: Record<string, boolean>;
+    combat_state: Record<string, unknown> | null;
+  };
+  gm: { id: number; display_name: string };
+  players: SessionPlayer[];
+  is_gm: boolean;
+}
+
+export interface RollEntry {
+  id: number;
+  character_name: string;
+  roll_type: string;
+  description: string;
+  dice_results: { value: number; type: string; is_success?: boolean; is_complication?: boolean }[];
+  successes: number;
+  complications: number;
+  tn: number | null;
+  margin: number | null;
+  timestamp: string;
+}
+
+export interface ChatMsg {
+  id: number;
+  user_id: number;
+  display_name: string;
+  message_type: string;
+  content: string;
+  target_user_id?: number | null;
+  created_at: string;
+}
+
 /* ─── Rolls ─── */
 export interface RollResult {
   dice: { type: string; face_value: number; successes: number; complication: boolean }[];

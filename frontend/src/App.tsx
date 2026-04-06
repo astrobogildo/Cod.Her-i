@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
+import GameSessionPage from './pages/GameSessionPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -14,6 +15,14 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route
+        path="/session/:tableId"
+        element={
+          <ProtectedRoute>
+            <GameSessionPage />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/*"
         element={

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Routes, Route, Link, useLocation } from 'react-router-dom';
+import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { listCharacters, CharacterSummary } from '../api';
+import { listCharacters, listTables, CharacterSummary, TableSummary } from '../api';
 import CharactersPage from './CharactersPage';
 import TablesPage from './TablesPage';
 
@@ -60,31 +60,69 @@ function Sidebar() {
 
 function Home() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [chars, setChars] = useState<CharacterSummary[]>([]);
+  const [tables, setTables] = useState<TableSummary[]>([]);
 
   useEffect(() => {
     listCharacters().then(setChars).catch(console.error);
+    listTables().then(setTables).catch(console.error);
   }, []);
+
+  const activeTables = tables.filter(t => t.status === 'active');
+  const lobbyTables = tables.filter(t => t.status === 'lobby');
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Bem-vindo, {user?.display_name}!</h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
           <p className="text-3xl font-bold text-hero-400">{chars.length}</p>
           <p className="text-sm text-gray-400 mt-1">Personagens</p>
         </div>
         <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-          <p className="text-3xl font-bold text-hero-400">—</p>
-          <p className="text-sm text-gray-400 mt-1">Mesas ativas</p>
+          <p className="text-3xl font-bold text-green-400">{activeTables.length}</p>
+          <p className="text-sm text-gray-400 mt-1">Sessões Ativas</p>
         </div>
         <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-          <p className="text-3xl font-bold text-hero-400">—</p>
-          <p className="text-sm text-gray-400 mt-1">Rolagens na sessão</p>
+          <p className="text-3xl font-bold text-yellow-400">{lobbyTables.length}</p>
+          <p className="text-sm text-gray-400 mt-1">Mesas Aguardando</p>
+        </div>
+        <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
+          <p className="text-3xl font-bold text-purple-400">{tables.length}</p>
+          <p className="text-sm text-gray-400 mt-1">Total de Mesas</p>
         </div>
       </div>
 
+      {/* Active sessions — quick enter */}
+      {activeTables.length > 0 && (
+        <div>
+          <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
+            <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+            Sessões Ativas
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {activeTables.map(t => (
+              <button
+                key={t.id}
+                onClick={() => navigate(`/session/${t.id}`)}
+                className="bg-gray-900 border border-green-800/40 rounded-xl p-5 hover:border-green-500/60 transition text-left group"
+              >
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-white">{t.name}</h3>
+                  <span className="text-xs bg-green-600/20 text-green-400 px-2.5 py-1 rounded-full">Em Jogo</span>
+                </div>
+                <p className="text-sm text-gray-400 mt-1">{t.description || `NP ${t.power_level}`}</p>
+                <p className="text-xs text-hero-400 mt-3 group-hover:underline">▶ Entrar na Sessão →</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Characters */}
       {chars.length > 0 && (
         <div>
           <h2 className="text-lg font-semibold mb-3">Seus Personagens</h2>
@@ -108,15 +146,26 @@ function Home() {
         </div>
       )}
 
-      {chars.length === 0 && (
-        <div className="text-center py-12 bg-gray-900 rounded-xl border border-gray-800">
-          <p className="text-gray-400 mb-4">Nenhum personagem ainda.</p>
-          <Link
-            to="/characters"
-            className="inline-block bg-hero-600 hover:bg-hero-700 text-white px-6 py-2.5 rounded-lg font-medium transition"
-          >
-            Criar Personagem
-          </Link>
+      {/* Quick actions */}
+      {chars.length === 0 && tables.length === 0 && (
+        <div className="text-center py-16 bg-gray-900 rounded-2xl border border-gray-800">
+          <p className="text-4xl mb-4">🦸</p>
+          <h2 className="text-xl font-bold text-white mb-2">Bem-vindo ao Código: Herói!</h2>
+          <p className="text-gray-400 mb-6">Comece criando seu primeiro personagem ou entre em uma mesa.</p>
+          <div className="flex gap-3 justify-center">
+            <Link
+              to="/characters"
+              className="bg-hero-600 hover:bg-hero-700 text-white px-6 py-2.5 rounded-lg font-medium transition"
+            >
+              🦸 Criar Personagem
+            </Link>
+            <Link
+              to="/tables"
+              className="bg-gray-800 hover:bg-gray-700 text-gray-300 px-6 py-2.5 rounded-lg font-medium transition"
+            >
+              🎲 Ver Mesas
+            </Link>
+          </div>
         </div>
       )}
     </div>
