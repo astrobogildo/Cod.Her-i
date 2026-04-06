@@ -78,6 +78,27 @@ def _ensure_schema() -> None:
     sync_engine.dispose()
     logger.info("Schema sync complete")
 
+    # 3. Ensure first user (id=1) is always admin
+    _fix_first_user_admin()
+
+
+def _fix_first_user_admin() -> None:
+    """If the first registered user lost admin due to schema migration defaults, restore it."""
+    db_path = _sync_db_path()
+    if not os.path.exists(db_path):
+        return
+    conn = sqlite3.connect(db_path)
+    try:
+        row = conn.execute("SELECT id, is_admin, role FROM users ORDER BY id LIMIT 1").fetchone()
+        if row and (not row[1] or row[2] not in ('admin',)):
+            conn.execute("UPDATE users SET is_admin = 1, role = 'admin' WHERE id = ?", (row[0],))
+            conn.commit()
+            logger.info("Fixed first user (id=%d) to admin", row[0])
+    except Exception:
+        pass  # table may not exist yet
+    finally:
+        conn.close()
+
 
 async def init_db() -> None:
     """Run Alembic migrations if available, otherwise ensure schema directly."""

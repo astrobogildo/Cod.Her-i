@@ -21,6 +21,37 @@ echo   ====================================================
 echo        CODIGO: HEROI  -  RPG Digital v2.0
 echo   ====================================================
 echo.
+echo   [1] Iniciar jogo
+echo   [2] Resetar banco de dados (apagar todos os dados)
+echo   [3] Sair
+echo.
+set /p "_MENU=   Escolha [1/2/3]: "
+if "!_MENU!"=="2" goto :reset_db
+if "!_MENU!"=="3" exit /b 0
+goto :continue_start
+
+:reset_db
+echo.
+echo   ATENCAO: Isso apaga TODOS os dados (usuarios, personagens, mesas).
+echo   O primeiro usuario a se registrar sera o Admin.
+set /p "_CONFIRM=   Tem certeza? (S/N): "
+if /i not "!_CONFIRM!"=="S" (
+    echo   Cancelado.
+    timeout /t 2 /nobreak >nul
+    goto :eof
+)
+if exist "!ROOT!\codigo_heroi.db" (
+    del "!ROOT!\codigo_heroi.db"
+    echo   Banco de dados apagado!
+) else (
+    echo   Banco ja estava limpo.
+)
+echo   Ao iniciar, registre uma nova conta - ela sera Admin automaticamente.
+echo.
+pause
+exit /b 0
+
+:continue_start
 
 :: ────────────────────────────────────────────────────────
 :: Fast path: already configured? Just start.
