@@ -351,8 +351,9 @@ async def get_table_chat(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Recent chat messages for this table."""
-    await _require_table_access(table_id, current_user, db)
+    """Recent chat messages for this table (whispers filtered to sender/recipient/GM)."""
+    table = await _require_table_access(table_id, current_user, db)
+    is_gm = table.gm_user_id == current_user.id or current_user.is_admin
     safe_limit = min(max(limit, 1), 500)
     result = await db.execute(
         select(ChatMessage)
@@ -361,8 +362,13 @@ async def get_table_chat(
         .limit(safe_limit)
     )
     messages = result.scalars().all()
-    return [
-        {
+    out = []
+    for m in reversed(messages):
+        # Filter whispers: only sender, target, or GM can see
+        if m.message_type == "whisper" and not is_gm:
+            if m.user_id != current_user.id and m.target_user_id != current_user.id:
+                continue
+        out.append({
             "id": m.id,
             "user_id": m.user_id,
             "display_name": m.display_name,
@@ -370,9 +376,8 @@ async def get_table_chat(
             "content": m.content,
             "target_user_id": m.target_user_id,
             "created_at": m.created_at.isoformat() if m.created_at else None,
-        }
-        for m in reversed(messages)  # oldest first
-    ]
+        })
+    return out
 
 
 @router.post("/{table_id}/chat")
@@ -493,6 +498,7 @@ def _empty_combat_state() -> dict:
         "zones": [],
         "initiative_order": [],
         "pending_tests": [],
+        "combat_log": [],
     }
 
 
@@ -507,7 +513,9 @@ async def start_encounter(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Start a new encounter with initial zones. Resets combat state."""
+    """Start a new encounter with initial zones. Resets combat state.
+    Auto-places all table characters into the first zone.
+    """
     table = await _require_table_access(table_id, current_user, db)
     await _require_gm(table, current_user)
 
@@ -515,10 +523,19 @@ async def start_encounter(
     for name in (body.zone_names or ["Zona A"]):
         zones.append({"id": uuid.uuid4().hex[:8], "name": name, "character_ids": []})
 
+    # Auto-place all characters from the table into the first zone
+    tc_result = await db.execute(
+        select(TableCharacter.character_id).where(TableCharacter.table_id == table_id)
+    )
+    all_char_ids = [row[0] for row in tc_result.all()]
+    if zones and all_char_ids:
+        zones[0]["character_ids"] = all_char_ids
+
     cs = _empty_combat_state()
     cs["active"] = True
     cs["round"] = 1
     cs["zones"] = zones
+    cs["combat_log"] = []
     table.combat_state = cs
     await db.commit()
     return cs
@@ -650,6 +667,52 @@ async def move_character(
     return cs
 
 
+class PlaceAllRequest(BaseModel):
+    zone_id: str
+
+
+@router.post("/{table_id}/encounter/place-all")
+async def place_all_characters(
+    table_id: int,
+    body: PlaceAllRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Place all table characters into the specified zone. GM only."""
+    table = await _require_table_access(table_id, current_user, db)
+    await _require_gm(table, current_user)
+    cs = _get_combat(table)
+    if not cs.get("active"):
+        raise HTTPException(400, "Nenhum encontro ativo")
+    target = next((z for z in cs["zones"] if z["id"] == body.zone_id), None)
+    if not target:
+        raise HTTPException(404, "Zona não encontrada")
+    # Collect all table character IDs
+    tc_result = await db.execute(
+        select(TableCharacter.character_id).where(TableCharacter.table_id == table_id)
+    )
+    all_char_ids = {row[0] for row in tc_result.all()}
+    # Already placed IDs
+    placed = set()
+    for z in cs["zones"]:
+        placed.update(z["character_ids"])
+    # Add unplaced ones to target
+    unplaced = all_char_ids - placed
+    target["character_ids"].extend(list(unplaced))
+    table.combat_state = cs
+    await db.commit()
+    return cs
+
+
+def _add_combat_log(cs: dict, msg: str):
+    """Append a timestamped entry to combat_log (max 100 entries)."""
+    from datetime import datetime, timezone
+    log = cs.setdefault("combat_log", [])
+    log.append({"t": datetime.now(timezone.utc).isoformat(), "msg": msg})
+    if len(log) > 100:
+        cs["combat_log"] = log[-100:]
+
+
 # ── Initiative & Turns ───────────────────────
 
 @router.post("/{table_id}/encounter/initiative")
@@ -724,6 +787,7 @@ async def roll_all_initiative(
     order.sort(key=lambda x: x["initiative"], reverse=True)
     cs["initiative_order"] = order
     cs["current_turn_index"] = 0
+    _add_combat_log(cs, "🎲 Iniciativa rolada para todos")
     table.combat_state = cs
     await db.commit()
     return cs

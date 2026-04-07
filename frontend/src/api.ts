@@ -310,6 +310,7 @@ export interface CombatState {
   zones: CombatZone[];
   initiative_order: InitiativeEntry[];
   pending_tests: PendingTest[];
+  combat_log: { t: string; msg: string }[];
 }
 
 export function startEncounter(tableId: number, zoneNames: string[]) {
@@ -345,6 +346,12 @@ export function renameZone(tableId: number, zoneId: string, name: string) {
 export function moveCharacterZone(tableId: number, characterId: number, zoneId: string) {
   return request<CombatState>(`/api/tables/${tableId}/encounter/move`, {
     method: 'POST', body: JSON.stringify({ character_id: characterId, zone_id: zoneId }),
+  });
+}
+
+export function placeAllCharacters(tableId: number, zoneId: string) {
+  return request<CombatState>(`/api/tables/${tableId}/encounter/place-all`, {
+    method: 'POST', body: JSON.stringify({ zone_id: zoneId }),
   });
 }
 

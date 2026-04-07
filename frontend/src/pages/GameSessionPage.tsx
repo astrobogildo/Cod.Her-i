@@ -5,18 +5,19 @@ import {
   getTableDetails, getTableRolls, getTableChat, postChatMessage,
   rollDice, startSession, pauseSession, archiveSession, removePlayer,
   getEncounter, startEncounter, endEncounter,
-  createZone, deleteZone, renameZone, moveCharacterZone,
+  createZone, deleteZone, renameZone, moveCharacterZone, placeAllCharacters,
   rollAllInitiative, setInitiative, nextTurn, prevTurn,
   requestTest, submitTest, dismissTest,
   SessionDetails, SessionPlayer, RollEntry, ChatMsg, RollResult, CombatState,
 } from '../api';
 
-/* ─── Avatar helper ─── */
+/* ═══════════════════════════════════════════════════
+   AVATAR HELPER
+   ═══════════════════════════════════════════════════ */
 function Avatar({ src, name, size = 32, className = '' }: { src?: string; name: string; size?: number; className?: string }) {
   const initials = name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
   const colors = ['from-violet-600 to-purple-500', 'from-blue-600 to-cyan-500', 'from-emerald-600 to-teal-500', 'from-orange-600 to-amber-500', 'from-rose-600 to-pink-500', 'from-indigo-600 to-blue-500'];
   const colorIdx = name.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % colors.length;
-
   if (src) {
     return <img src={src} alt={name} style={{ width: size, height: size }} className={`rounded-full object-cover border-2 border-gray-700 flex-shrink-0 ${className}`} />;
   }
@@ -29,6 +30,9 @@ function Avatar({ src, name, size = 32, className = '' }: { src?: string; name: 
 }
 
 
+/* ═══════════════════════════════════════════════════
+   MAIN PAGE
+   ═══════════════════════════════════════════════════ */
 export default function GameSessionPage() {
   const { tableId } = useParams<{ tableId: string }>();
   const { user } = useAuth();
@@ -47,9 +51,14 @@ export default function GameSessionPage() {
   const [showPlayerSheet, setShowPlayerSheet] = useState<SessionPlayer | null>(null);
   const [combat, setCombat] = useState<CombatState | null>(null);
   const [showGmTools, setShowGmTools] = useState(false);
-
-  // Mobile panel state
   const [mobilePanel, setMobilePanel] = useState<'main' | 'players' | 'chat' | 'rolls'>('main');
+
+  // Turn banner state
+  const [turnBanner, setTurnBanner] = useState<{ name: string; avatar: string; exiting: boolean } | null>(null);
+  const prevTurnRef = useRef<number | null>(null);
+
+  // Whisper state
+  const [whisperTarget, setWhisperTarget] = useState<{ userId: number; name: string } | null>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -57,30 +66,32 @@ export default function GameSessionPage() {
 
   /* ─── Loaders ─── */
   const loadSession = useCallback(async () => {
-    try {
-      const data = await getTableDetails(tid);
-      setSession(data);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Erro ao carregar sessão');
-    } finally { setLoading(false); }
+    try { const data = await getTableDetails(tid); setSession(data); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Erro ao carregar sessão'); }
+    finally { setLoading(false); }
   }, [tid]);
-
-  const loadRolls = useCallback(async () => {
-    try { setRolls(await getTableRolls(tid)); } catch {}
-  }, [tid]);
-
-  const loadChat = useCallback(async () => {
-    try { setChat(await getTableChat(tid)); } catch {}
-  }, [tid]);
-
+  const loadRolls = useCallback(async () => { try { setRolls(await getTableRolls(tid)); } catch {} }, [tid]);
+  const loadChat = useCallback(async () => { try { setChat(await getTableChat(tid)); } catch {} }, [tid]);
   const loadCombat = useCallback(async () => {
-    try {
-      const cs = await getEncounter(tid);
-      setCombat(cs.active ? cs : null);
-    } catch {}
+    try { const cs = await getEncounter(tid); setCombat(cs.active ? cs : null); } catch {}
   }, [tid]);
 
   useEffect(() => { loadSession(); loadRolls(); loadChat(); loadCombat(); }, [loadSession, loadRolls, loadChat, loadCombat]);
+
+  /* ─── Turn banner trigger ─── */
+  useEffect(() => {
+    if (!combat || !combat.initiative_order.length) { prevTurnRef.current = null; return; }
+    const currentCharId = combat.initiative_order[combat.current_turn_index]?.character_id;
+    if (prevTurnRef.current !== null && prevTurnRef.current !== currentCharId && session) {
+      const p = session.players.find(pl => pl.character_id === currentCharId);
+      if (p) {
+        setTurnBanner({ name: p.character_name, avatar: p.avatar_url || '', exiting: false });
+        setTimeout(() => setTurnBanner(prev => prev ? { ...prev, exiting: true } : null), 2500);
+        setTimeout(() => setTurnBanner(null), 3000);
+      }
+    }
+    prevTurnRef.current = currentCharId;
+  }, [combat, session]);
 
   /* ─── WebSocket ─── */
   useEffect(() => {
@@ -107,7 +118,6 @@ export default function GameSessionPage() {
     pollRef.current = setInterval(() => { loadSession(); loadCombat(); }, 10000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [loadSession, loadCombat]);
-
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chat]);
 
   const wsBroadcast = (event: string, data: Record<string, unknown> = {}) => {
@@ -119,7 +129,16 @@ export default function GameSessionPage() {
     if (!chatInput.trim()) return;
     const text = chatInput.trim();
     setChatInput('');
-    try { await postChatMessage(tid, text); wsBroadcast('chat_message', { content: text }); await loadChat(); } catch {}
+    try {
+      if (whisperTarget) {
+        await postChatMessage(tid, `[Sussurro para ${whisperTarget.name}] ${text}`, 'whisper', whisperTarget.userId);
+        setWhisperTarget(null);
+      } else {
+        await postChatMessage(tid, text);
+      }
+      wsBroadcast('chat_message', { content: text });
+      await loadChat();
+    } catch {}
   };
 
   /* ─── Quick Roll ─── */
@@ -171,7 +190,22 @@ export default function GameSessionPage() {
 
   return (
     <div className="flex flex-col h-[100dvh] bg-gray-950 text-white overflow-hidden">
-      {/* ─── TOP BAR ─── */}
+
+      {/* ═══ TURN BANNER ═══ */}
+      {turnBanner && (
+        <div className={`fixed inset-x-0 top-16 z-50 flex justify-center pointer-events-none ${turnBanner.exiting ? 'animate-banner-exit' : 'animate-banner-enter'}`}>
+          <div className="bg-gray-900/95 backdrop-blur-md border border-hero-600/50 rounded-2xl px-6 py-3 flex items-center gap-4 shadow-2xl shadow-hero-600/20">
+            <Avatar src={turnBanner.avatar} name={turnBanner.name} size={48} className="border-hero-500" />
+            <div>
+              <p className="text-[10px] text-hero-400 uppercase tracking-widest font-semibold">Vez de</p>
+              <p className="text-xl font-bold text-white">{turnBanner.name}</p>
+            </div>
+            <div className="w-2 h-2 bg-hero-500 rounded-full animate-bounce-subtle" />
+          </div>
+        </div>
+      )}
+
+      {/* ═══ TOP BAR ═══ */}
       <header className="bg-gray-900/95 backdrop-blur-sm border-b border-gray-800 px-3 md:px-4 py-2 flex items-center justify-between shrink-0 z-30">
         <div className="flex items-center gap-3 min-w-0">
           <button onClick={() => navigate('/tables')} className="text-gray-400 hover:text-white text-sm shrink-0">←</button>
@@ -194,16 +228,14 @@ export default function GameSessionPage() {
               {table.status === 'lobby' && <button onClick={() => handleCtrl('start')} className="text-[10px] bg-green-700 hover:bg-green-600 px-2 py-1 rounded-lg transition-all-fast">▶ Start</button>}
               {table.status === 'active' && <button onClick={() => handleCtrl('pause')} className="text-[10px] bg-yellow-700 hover:bg-yellow-600 px-2 py-1 rounded-lg transition-all-fast hidden sm:block">⏸</button>}
               {table.status !== 'archived' && <button onClick={() => handleCtrl('archive')} className="text-[10px] bg-red-800 hover:bg-red-700 px-2 py-1 rounded-lg transition-all-fast hidden sm:block">⏹</button>}
-              <button
-                onClick={() => setShowGmTools(!showGmTools)}
-                className={`text-[10px] px-2 py-1 rounded-lg transition-all-fast ${showGmTools ? 'bg-hero-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-300'}`}
-              >🎭</button>
+              <button onClick={() => setShowGmTools(!showGmTools)}
+                className={`text-[10px] px-2 py-1 rounded-lg transition-all-fast ${showGmTools ? 'bg-hero-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-300'}`}>🎭</button>
             </div>
           )}
         </div>
       </header>
 
-      {/* ─── GM TOOLS (slides down) ─── */}
+      {/* ═══ GM TOOLS ═══ */}
       {is_gm && showGmTools && (
         <div className="animate-slide-down">
           <GmToolbar tid={tid} combat={combat} players={players}
@@ -211,29 +243,31 @@ export default function GameSessionPage() {
         </div>
       )}
 
-      {/* ─── MAIN LAYOUT ─── */}
+      {/* ═══ INITIATIVE TIMELINE (horizontal strip) ═══ */}
+      {combat && combat.initiative_order.length > 0 && (
+        <InitiativeTimeline combat={combat} charName={charName} charAvatar={charAvatar}
+          isGm={is_gm} onPrev={() => enc(() => prevTurn(tid))} onNext={() => enc(() => nextTurn(tid))} />
+      )}
+
+      {/* ═══ MAIN LAYOUT ═══ */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* ─── LEFT SIDEBAR: Players (hidden on mobile) ─── */}
+        {/* ── LEFT SIDEBAR: Players (desktop) ── */}
         <aside className="hidden md:flex w-56 lg:w-64 bg-gray-900/50 border-r border-gray-800 flex-col overflow-y-auto shrink-0">
-          <div className="p-3 border-b border-gray-800">
+          <div className="p-3 border-b border-gray-800 flex items-center justify-between">
             <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Jogadores ({players.length})</h2>
           </div>
           <div className="flex-1 p-2 space-y-1.5">
             {players.map(p => (
               <PlayerCard key={p.character_id} player={p} isGm={is_gm} isCurrentTurn={currentTurnCharId === p.character_id}
-                onKick={() => handleKick(p.character_id)} onClick={() => setShowPlayerSheet(p)} />
+                onKick={() => handleKick(p.character_id)} onClick={() => setShowPlayerSheet(p)}
+                onWhisper={() => setWhisperTarget({ userId: p.user_id, name: p.display_name })} />
             ))}
             {players.length === 0 && <p className="text-xs text-gray-600 text-center py-8">Nenhum jogador</p>}
           </div>
-          {/* Initiative tracker */}
-          {combat && combat.initiative_order.length > 0 && (
-            <InitiativePanel combat={combat} charName={charName} charAvatar={charAvatar} isGm={is_gm}
-              onPrev={() => enc(() => prevTurn(tid))} onNext={() => enc(() => nextTurn(tid))} />
-          )}
         </aside>
 
-        {/* ─── CENTER ─── */}
+        {/* ── CENTER ── */}
         <main className="flex-1 flex flex-col overflow-hidden min-w-0">
           {/* Quick roll bar */}
           <div className="bg-gray-900/30 border-b border-gray-800 px-3 py-1.5 flex items-center gap-2 shrink-0">
@@ -253,38 +287,23 @@ export default function GameSessionPage() {
 
           {/* Center content */}
           <div className="flex-1 overflow-y-auto">
-            {/* Mobile: different panels based on bottom nav */}
+            {/* Mobile panels */}
             <div className="md:hidden">
               {mobilePanel === 'players' ? (
                 <div className="p-3 space-y-2 animate-fade-in">
                   <h2 className="text-sm font-semibold text-gray-300 mb-2">Jogadores ({players.length})</h2>
                   {players.map(p => (
                     <PlayerCard key={p.character_id} player={p} isGm={is_gm} isCurrentTurn={currentTurnCharId === p.character_id}
-                      onKick={() => handleKick(p.character_id)} onClick={() => { setShowPlayerSheet(p); setMobilePanel('main'); }} />
+                      onKick={() => handleKick(p.character_id)} onClick={() => { setShowPlayerSheet(p); setMobilePanel('main'); }}
+                      onWhisper={() => { setWhisperTarget({ userId: p.user_id, name: p.display_name }); setMobilePanel('chat'); }} />
                   ))}
-                  {combat && combat.initiative_order.length > 0 && (
-                    <InitiativePanel combat={combat} charName={charName} charAvatar={charAvatar} isGm={is_gm}
-                      onPrev={() => enc(() => prevTurn(tid))} onNext={() => enc(() => nextTurn(tid))} />
-                  )}
                 </div>
               ) : mobilePanel === 'chat' ? (
-                <div className="flex flex-col h-full animate-fade-in">
-                  <div className="flex-1 overflow-y-auto p-3 space-y-1">
-                    {chat.map(m => <ChatBubble key={m.id} msg={m} myUserId={user?.id || 0} />)}
-                    <div ref={chatEndRef} />
-                  </div>
-                  <div className="border-t border-gray-800 p-2 shrink-0">
-                    <div className="flex gap-2">
-                      <input type="text" value={chatInput} onChange={e => setChatInput(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && sendChat()} placeholder="Mensagem..."
-                        className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-hero-500" />
-                      <button onClick={sendChat} disabled={!chatInput.trim()}
-                        className="bg-hero-600 hover:bg-hero-700 disabled:opacity-50 text-white px-3 py-2 rounded-lg text-sm transition-all-fast">➤</button>
-                    </div>
-                  </div>
-                </div>
+                <ChatPanel chat={chat} chatInput={chatInput} setChatInput={setChatInput} sendChat={sendChat}
+                  myUserId={user?.id || 0} chatEndRef={chatEndRef} whisperTarget={whisperTarget} onClearWhisper={() => setWhisperTarget(null)} />
               ) : mobilePanel === 'rolls' ? (
                 <div className="p-3 space-y-1.5 animate-fade-in">
+                  {combat && (combat.combat_log?.length ?? 0) > 0 && <CombatLog log={combat.combat_log || []} />}
                   {rolls.map(r => <RollCard key={r.id} roll={r} />)}
                   {rolls.length === 0 && <p className="text-xs text-gray-600 text-center py-8">Nenhuma rolagem</p>}
                 </div>
@@ -302,7 +321,7 @@ export default function GameSessionPage() {
               )}
             </div>
 
-            {/* Desktop: center content only */}
+            {/* Desktop center */}
             <div className="hidden md:block p-4">
               {showPlayerSheet ? (
                 <PlayerSheetView player={showPlayerSheet} isGm={is_gm} onClose={() => setShowPlayerSheet(null)} />
@@ -316,14 +335,16 @@ export default function GameSessionPage() {
           </div>
         </main>
 
-        {/* ─── RIGHT SIDEBAR: Chat/Rolls (hidden on mobile) ─── */}
+        {/* ── RIGHT SIDEBAR: Chat/Rolls (desktop) ── */}
         <aside className="hidden md:flex w-64 lg:w-72 bg-gray-900/50 border-l border-gray-800 flex-col shrink-0">
           <RightPanel chat={chat} rolls={rolls} chatInput={chatInput} setChatInput={setChatInput}
-            sendChat={sendChat} loadChat={loadChat} loadRolls={loadRolls} myUserId={user?.id || 0} chatEndRef={chatEndRef} />
+            sendChat={sendChat} loadChat={loadChat} loadRolls={loadRolls} myUserId={user?.id || 0} chatEndRef={chatEndRef}
+            whisperTarget={whisperTarget} onClearWhisper={() => setWhisperTarget(null)}
+            combatLog={combat?.combat_log || []} hasCombat={!!combat} />
         </aside>
       </div>
 
-      {/* ─── MOBILE BOTTOM NAV ─── */}
+      {/* ═══ MOBILE BOTTOM NAV ═══ */}
       <nav className="md:hidden mobile-nav flex items-center justify-around">
         {[
           { key: 'main' as const, icon: '⚔', label: combat ? 'Combate' : 'Sessão' },
@@ -346,39 +367,76 @@ export default function GameSessionPage() {
 
 
 /* ═══════════════════════════════════════════════════
-   INITIATIVE PANEL
+   INITIATIVE TIMELINE (horizontal strip below header)
    ═══════════════════════════════════════════════════ */
-function InitiativePanel({ combat, charName, charAvatar, isGm, onPrev, onNext }: {
-  combat: CombatState;
-  charName: (id: number) => string;
-  charAvatar: (id: number) => string;
-  isGm: boolean;
-  onPrev: () => void;
-  onNext: () => void;
+function InitiativeTimeline({ combat, charName, charAvatar, isGm, onPrev, onNext }: {
+  combat: CombatState; charName: (id: number) => string; charAvatar: (id: number) => string;
+  isGm: boolean; onPrev: () => void; onNext: () => void;
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const currentIdx = combat.current_turn_index;
+
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const el = container.children[currentIdx] as HTMLElement | undefined;
+    if (el) el.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  }, [currentIdx]);
+
   return (
-    <div className="border-t border-gray-800 p-2">
-      <div className="flex items-center justify-between mb-1.5">
-        <span className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider">Iniciativa</span>
-        {isGm && <div className="flex gap-1">
-          <button onClick={onPrev} className="text-[10px] bg-gray-800 hover:bg-gray-700 px-1.5 py-0.5 rounded transition-all-fast">◀</button>
-          <button onClick={onNext} className="text-[10px] bg-hero-600 hover:bg-hero-700 px-1.5 py-0.5 rounded transition-all-fast">▶</button>
-        </div>}
-      </div>
-      <div className="space-y-0.5">
-        {combat.initiative_order.map((e, i) => {
-          const isCurrent = i === combat.current_turn_index;
+    <div className="bg-gray-900/80 border-b border-gray-800 px-2 py-1.5 shrink-0 flex items-center gap-2 z-20">
+      {isGm && (
+        <button onClick={onPrev} className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-400 px-2 py-1 rounded-lg transition-all-fast shrink-0">◀</button>
+      )}
+      <div ref={scrollRef} className="flex items-center gap-1.5 overflow-x-auto timeline-scroll flex-1">
+        {combat.initiative_order.map((entry, i) => {
+          const isCurrent = i === currentIdx;
+          const isDone = i < currentIdx;
           return (
-            <div key={e.character_id} className={`flex items-center gap-2 px-2 py-1 rounded text-[11px] transition-all duration-300 ${
-              isCurrent ? 'bg-hero-600/20 border border-hero-600/40 text-hero-300' : 'text-gray-400'
-            }`}>
-              <Avatar src={charAvatar(e.character_id)} name={charName(e.character_id)} size={20}
-                className={isCurrent ? 'border-hero-500 shadow-[0_0_6px_rgba(124,58,237,0.4)]' : ''} />
-              <span className="truncate flex-1">{isCurrent && '▸ '}{charName(e.character_id)}</span>
-              <span className="text-[10px] font-mono">{e.initiative}</span>
+            <div key={entry.character_id}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl shrink-0 transition-all duration-300 animate-timeline-pop ${
+                isCurrent
+                  ? 'bg-hero-600/25 border border-hero-500/50 shadow-lg shadow-hero-600/10'
+                  : isDone
+                    ? 'bg-gray-800/40 opacity-50'
+                    : 'bg-gray-800/60 border border-gray-700/50'
+              }`}>
+              <Avatar src={charAvatar(entry.character_id)} name={charName(entry.character_id)} size={isCurrent ? 28 : 22}
+                className={`transition-all duration-300 ${isCurrent ? 'border-hero-500 shadow-[0_0_8px_rgba(124,58,237,0.4)]' : ''}`} />
+              <div className="flex flex-col">
+                <span className={`text-[10px] font-medium leading-tight truncate max-w-[80px] ${isCurrent ? 'text-hero-300' : 'text-gray-400'}`}>
+                  {charName(entry.character_id)}
+                </span>
+                <span className="text-[8px] text-gray-600 font-mono">{entry.initiative} init</span>
+              </div>
+              {isCurrent && <div className="w-1.5 h-1.5 bg-hero-400 rounded-full animate-bounce-subtle ml-0.5" />}
             </div>
           );
         })}
+      </div>
+      {isGm && (
+        <button onClick={onNext} className="text-xs bg-hero-600 hover:bg-hero-700 text-white px-2 py-1 rounded-lg transition-all-fast shrink-0 font-semibold">▶</button>
+      )}
+      <div className="text-[10px] text-orange-400 font-bold shrink-0 hidden sm:block">R{combat.round}</div>
+    </div>
+  );
+}
+
+
+/* ═══════════════════════════════════════════════════
+   COMBAT LOG
+   ═══════════════════════════════════════════════════ */
+function CombatLog({ log }: { log: { t: string; msg: string }[] }) {
+  return (
+    <div className="bg-gray-900 rounded-xl border border-gray-800 p-3 mb-3">
+      <h3 className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold mb-2">📜 Log de Combate</h3>
+      <div className="space-y-0.5 max-h-32 overflow-y-auto">
+        {log.slice(-10).map((entry, i) => (
+          <div key={i} className="text-[10px] text-gray-400 animate-log-slide flex items-start gap-1.5">
+            <span className="text-gray-600 shrink-0">{new Date(entry.t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+            <span>{entry.msg}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -386,12 +444,14 @@ function InitiativePanel({ combat, charName, charAvatar, isGm, onPrev, onNext }:
 
 
 /* ═══════════════════════════════════════════════════
-   RIGHT PANEL (Chat + Rolls)
+   RIGHT PANEL (Chat + Rolls + Log)
    ═══════════════════════════════════════════════════ */
-function RightPanel({ chat, rolls, chatInput, setChatInput, sendChat, loadChat, loadRolls, myUserId, chatEndRef }: {
+function RightPanel({ chat, rolls, chatInput, setChatInput, sendChat, loadChat, loadRolls, myUserId, chatEndRef, whisperTarget, onClearWhisper, combatLog, hasCombat }: {
   chat: ChatMsg[]; rolls: RollEntry[]; chatInput: string; setChatInput: (v: string) => void;
   sendChat: () => void; loadChat: () => void; loadRolls: () => void; myUserId: number;
   chatEndRef: React.RefObject<HTMLDivElement | null>;
+  whisperTarget: { userId: number; name: string } | null; onClearWhisper: () => void;
+  combatLog: { t: string; msg: string }[]; hasCombat: boolean;
 }) {
   const [tab, setTab] = useState<'chat' | 'rolls'>('chat');
   return (
@@ -410,21 +470,65 @@ function RightPanel({ chat, rolls, chatInput, setChatInput, sendChat, loadChat, 
         {tab === 'chat' ? (
           <>{chat.map(m => <ChatBubble key={m.id} msg={m} myUserId={myUserId} />)}<div ref={chatEndRef} /></>
         ) : (
-          <>{rolls.map(r => <RollCard key={r.id} roll={r} />)}{rolls.length === 0 && <p className="text-xs text-gray-600 text-center py-4">Nenhuma rolagem</p>}</>
+          <>
+            {hasCombat && combatLog.length > 0 && <CombatLog log={combatLog} />}
+            {rolls.map(r => <RollCard key={r.id} roll={r} />)}
+            {rolls.length === 0 && <p className="text-xs text-gray-600 text-center py-4">Nenhuma rolagem</p>}
+          </>
         )}
       </div>
       {tab === 'chat' && (
         <div className="border-t border-gray-800 p-2 shrink-0">
+          {whisperTarget && (
+            <div className="flex items-center gap-2 mb-1.5 text-[10px]">
+              <span className="text-purple-400">🔒 Sussurro para <strong>{whisperTarget.name}</strong></span>
+              <button onClick={onClearWhisper} className="text-gray-500 hover:text-red-400">✕</button>
+            </div>
+          )}
           <div className="flex gap-2">
             <input type="text" value={chatInput} onChange={e => setChatInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && sendChat()} placeholder="Mensagem..."
-              className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-hero-500" />
+              onKeyDown={e => e.key === 'Enter' && sendChat()} placeholder={whisperTarget ? `Sussurro para ${whisperTarget.name}...` : 'Mensagem...'}
+              className={`flex-1 bg-gray-800 border rounded-lg px-3 py-2 text-sm text-white outline-none ${whisperTarget ? 'border-purple-600/50 focus:border-purple-500' : 'border-gray-700 focus:border-hero-500'}`} />
             <button onClick={sendChat} disabled={!chatInput.trim()}
               className="bg-hero-600 hover:bg-hero-700 disabled:opacity-50 text-white px-3 py-2 rounded-lg text-sm transition-all-fast">➤</button>
           </div>
         </div>
       )}
     </>
+  );
+}
+
+
+/* ═══════════════════════════════════════════════════
+   CHAT PANEL (mobile full-screen)
+   ═══════════════════════════════════════════════════ */
+function ChatPanel({ chat, chatInput, setChatInput, sendChat, myUserId, chatEndRef, whisperTarget, onClearWhisper }: {
+  chat: ChatMsg[]; chatInput: string; setChatInput: (v: string) => void; sendChat: () => void;
+  myUserId: number; chatEndRef: React.RefObject<HTMLDivElement | null>;
+  whisperTarget: { userId: number; name: string } | null; onClearWhisper: () => void;
+}) {
+  return (
+    <div className="flex flex-col h-full animate-fade-in">
+      <div className="flex-1 overflow-y-auto p-3 space-y-1">
+        {chat.map(m => <ChatBubble key={m.id} msg={m} myUserId={myUserId} />)}
+        <div ref={chatEndRef} />
+      </div>
+      <div className="border-t border-gray-800 p-2 shrink-0">
+        {whisperTarget && (
+          <div className="flex items-center gap-2 mb-1.5 text-[10px]">
+            <span className="text-purple-400">🔒 Sussurro para <strong>{whisperTarget.name}</strong></span>
+            <button onClick={onClearWhisper} className="text-gray-500 hover:text-red-400">✕</button>
+          </div>
+        )}
+        <div className="flex gap-2">
+          <input type="text" value={chatInput} onChange={e => setChatInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && sendChat()} placeholder={whisperTarget ? `Sussurro para ${whisperTarget.name}...` : 'Mensagem...'}
+            className={`flex-1 bg-gray-800 border rounded-lg px-3 py-2 text-sm text-white outline-none ${whisperTarget ? 'border-purple-600/50 focus:border-purple-500' : 'border-gray-700 focus:border-hero-500'}`} />
+          <button onClick={sendChat} disabled={!chatInput.trim()}
+            className="bg-hero-600 hover:bg-hero-700 disabled:opacity-50 text-white px-3 py-2 rounded-lg text-sm transition-all-fast">➤</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -454,7 +558,6 @@ function GmToolbar({ tid, combat, players, onUpdate }: {
   return (
     <div className="bg-gray-900/90 backdrop-blur-sm border-b border-gray-800 px-3 py-2">
       <div className="flex items-center gap-3 flex-wrap">
-        {/* Encounter control */}
         {!combat ? (
           <div className="flex items-center gap-2">
             <input type="text" value={newZoneName} onChange={e => setNewZoneName(e.target.value)}
@@ -470,9 +573,9 @@ function GmToolbar({ tid, combat, players, onUpdate }: {
             <input type="text" value={newZoneName} onChange={e => setNewZoneName(e.target.value)}
               placeholder="Nova zona..." onKeyDown={e => e.key === 'Enter' && doAddZone()}
               className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white outline-none w-24 sm:w-32" />
-            <button onClick={doAddZone} disabled={!newZoneName.trim()} className="text-[10px] bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-white px-2 py-1 rounded transition-all-fast">+</button>
+            <button onClick={doAddZone} disabled={!newZoneName.trim()} className="text-[10px] bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-white px-2 py-1 rounded transition-all-fast">+Zona</button>
             <button onClick={doRollInit} className="text-[10px] bg-blue-700 hover:bg-blue-600 text-white px-2 py-1 rounded-lg transition-all-fast">🎲 Init</button>
-            <button onClick={doEndEncounter} className="text-[10px] bg-red-800 hover:bg-red-700 text-white px-2 py-1 rounded-lg transition-all-fast">✕</button>
+            <button onClick={doEndEncounter} className="text-[10px] bg-red-800 hover:bg-red-700 text-white px-2 py-1 rounded-lg transition-all-fast">✕ Fim</button>
           </div>
         )}
 
@@ -508,13 +611,13 @@ function EncounterView({ combat, tid, players, isGm, myUserId, onUpdate }: {
   isGm: boolean; myUserId: number; onUpdate: (cs: CombatState | null) => void;
 }) {
   const charName = (id: number) => players.find(p => p.character_id === id)?.character_name ?? `#${id}`;
-  const charPlayer = (id: number) => players.find(p => p.character_id === id);
   const placedIds = new Set(combat.zones.flatMap(z => z.character_ids));
   const unplaced = players.filter(p => !placedIds.has(p.character_id));
   const myCharIds = players.filter(p => p.user_id === myUserId).map(p => p.character_id);
   const currentTurnCharId = combat.initiative_order?.[combat.current_turn_index]?.character_id;
 
   const handleMove = async (charId: number, zoneId: string) => { const cs = await moveCharacterZone(tid, charId, zoneId); onUpdate(cs); };
+  const handlePlaceAll = async (zoneId: string) => { const cs = await placeAllCharacters(tid, zoneId); onUpdate(cs); };
   const handleDeleteZone = async (zoneId: string) => { const cs = await deleteZone(tid, zoneId); onUpdate(cs); };
   const handleRenameZone = async (zoneId: string, name: string) => { const cs = await renameZone(tid, zoneId, name); onUpdate(cs); };
   const handleSubmitTest = async (testId: string, charId: number, successes: number, complications: number) => { const cs = await submitTest(tid, testId, charId, successes, complications); onUpdate(cs); };
@@ -555,6 +658,36 @@ function EncounterView({ combat, tid, players, isGm, myUserId, onUpdate }: {
         </div>
       )}
 
+      {/* Unplaced characters — place all button */}
+      {unplaced.length > 0 && (
+        <div className="bg-gray-900/50 border border-dashed border-gray-700 rounded-xl p-3 animate-fade-in">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[10px] text-gray-500">Fora do encontro ({unplaced.length}):</p>
+            {isGm && combat.zones.length > 0 && (
+              <button onClick={() => handlePlaceAll(combat.zones[0].id)}
+                className="text-[10px] bg-hero-600 hover:bg-hero-700 text-white px-3 py-1 rounded-lg transition-all-fast">
+                📍 Colocar Todos em {combat.zones[0].name}
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {unplaced.map(p => (
+              <div key={p.character_id} className="flex items-center gap-2 bg-gray-800/60 rounded-lg px-2.5 py-1.5">
+                <Avatar src={p.avatar_url} name={p.character_name} size={24} />
+                <span className="text-xs text-gray-300">{p.character_name}</span>
+                {combat.zones.length > 0 && (
+                  <select defaultValue="" onChange={e => { if (e.target.value) handleMove(p.character_id, e.target.value); }}
+                    className="bg-gray-700 border border-gray-600 rounded px-1.5 py-0.5 text-[10px] text-gray-300 outline-none">
+                    <option value="" disabled>→ Zona</option>
+                    {combat.zones.map(z => <option key={z.id} value={z.id}>{z.name}</option>)}
+                  </select>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Zones grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {combat.zones.map(zone => (
@@ -564,27 +697,8 @@ function EncounterView({ combat, tid, players, isGm, myUserId, onUpdate }: {
         ))}
       </div>
 
-      {/* Unplaced characters */}
-      {unplaced.length > 0 && (
-        <div className="bg-gray-900/50 border border-dashed border-gray-700 rounded-xl p-3 animate-fade-in">
-          <p className="text-[10px] text-gray-500 mb-2">Fora do encontro:</p>
-          <div className="flex flex-wrap gap-2">
-            {unplaced.map(p => (
-              <div key={p.character_id} className="flex items-center gap-2 bg-gray-800/60 rounded-lg px-2.5 py-1.5">
-                <Avatar src={p.avatar_url} name={p.character_name} size={24} />
-                <span className="text-xs text-gray-300">{p.character_name}</span>
-                {combat.zones.length > 0 && (
-                  <select defaultValue="" onChange={e => { if (e.target.value) handleMove(p.character_id, e.target.value); }}
-                    className="bg-gray-700 border border-gray-600 rounded px-1.5 py-0.5 text-[10px] text-gray-300 outline-none">
-                    <option value="" disabled>→</option>
-                    {combat.zones.map(z => <option key={z.id} value={z.id}>{z.name}</option>)}
-                  </select>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Combat log */}
+      {(combat.combat_log?.length ?? 0) > 0 && <CombatLog log={combat.combat_log || []} />}
     </div>
   );
 }
@@ -600,35 +714,34 @@ function ZoneCard({ zone, players, isGm, currentTurnCharId, allZones, myCharIds,
   const [editName, setEditName] = useState(zone.name);
   const charsInZone = zone.character_ids.map(id => players.find(p => p.character_id === id)).filter(Boolean) as SessionPlayer[];
   const otherZones = allZones.filter(z => z.id !== zone.id);
+  const hasTurnChar = charsInZone.some(p => p.character_id === currentTurnCharId);
 
   return (
-    <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden transition-all duration-300 hover:border-gray-700">
-      {/* Zone header */}
-      <div className="bg-gray-800/50 px-3 py-2 flex items-center justify-between">
+    <div className={`bg-gray-900 rounded-xl border overflow-hidden transition-all duration-300 ${
+      hasTurnChar ? 'border-hero-600/40 shadow-lg shadow-hero-600/10' : 'border-gray-800 hover:border-gray-700'
+    }`}>
+      <div className={`px-3 py-2 flex items-center justify-between ${hasTurnChar ? 'bg-hero-600/10' : 'bg-gray-800/50'}`}>
         {editing ? (
           <input type="text" value={editName} onChange={e => setEditName(e.target.value)}
             onBlur={() => { onRename(editName); setEditing(false); }}
             onKeyDown={e => { if (e.key === 'Enter') { onRename(editName); setEditing(false); } }}
             autoFocus className="bg-transparent border-b border-hero-500 text-sm font-semibold text-white outline-none w-full" />
         ) : (
-          <h3 className="text-sm font-semibold text-white cursor-pointer hover:text-hero-400 transition-all-fast" onClick={() => isGm && setEditing(true)}>
-            {zone.name}
+          <h3 className="text-sm font-semibold text-white cursor-pointer hover:text-hero-400 transition-all-fast flex items-center gap-1.5" onClick={() => isGm && setEditing(true)}>
+            <span className="text-gray-500">📍</span> {zone.name}
           </h3>
         )}
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-gray-500">{charsInZone.length}</span>
+          <span className="text-[10px] text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded-full">{charsInZone.length}</span>
           {isGm && <button onClick={onDelete} className="text-[10px] text-red-500 hover:text-red-400 transition-all-fast">✕</button>}
         </div>
       </div>
-
-      {/* Characters in zone — avatar miniatures */}
       <div className="p-2.5 space-y-1 min-h-[60px]">
         {charsInZone.length === 0 && <p className="text-[10px] text-gray-600 text-center py-3">Zona vazia</p>}
         {charsInZone.map(p => {
           const hpPct = p.vitalidade_max > 0 ? (p.vitalidade_current / p.vitalidade_max) * 100 : 100;
           const isTurn = currentTurnCharId === p.character_id;
           const canMove = isGm || myCharIds.includes(p.character_id);
-
           return (
             <div key={p.character_id} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg transition-all duration-300 ${
               isTurn ? 'bg-hero-600/15 border border-hero-600/30 turn-active' : 'bg-gray-800/40 hover:bg-gray-800/60'
@@ -636,17 +749,21 @@ function ZoneCard({ zone, players, isGm, currentTurnCharId, allZones, myCharIds,
               <Avatar src={p.avatar_url} name={p.character_name} size={28}
                 className={isTurn ? 'border-hero-500 shadow-[0_0_8px_rgba(124,58,237,0.4)]' : ''} />
               <div className="flex-1 min-w-0">
-                <span className="text-[11px] font-medium text-white truncate block">{p.character_name}</span>
-                <div className="flex items-center gap-1.5 text-[9px] text-gray-500">
-                  <span className={hpPct > 60 ? 'text-green-400' : hpPct > 30 ? 'text-yellow-400' : 'text-red-400'}>
-                    {p.vitalidade_current}/{p.vitalidade_max}
-                  </span>
-                  <span>E{p.dodge} A{p.parry}</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-[11px] font-medium text-white truncate">{p.character_name}</span>
+                  {isTurn && <span className="text-[8px] bg-hero-600/30 text-hero-300 px-1.5 py-0.5 rounded-full">VEZ</span>}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="flex-1 h-1 bg-gray-700 rounded-full overflow-hidden">
+                    <div className={`h-full hp-bar-fill rounded-full ${hpPct > 60 ? 'bg-green-500' : hpPct > 30 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                      style={{ width: `${hpPct}%` }} />
+                  </div>
+                  <span className="text-[9px] text-gray-500">{p.vitalidade_current}/{p.vitalidade_max}</span>
                 </div>
               </div>
               {canMove && otherZones.length > 0 && (
                 <select defaultValue="" onChange={e => { if (e.target.value) onMove(p.character_id, e.target.value); }}
-                  className="bg-gray-800 border border-gray-700 rounded px-1 py-0.5 text-[9px] text-gray-400 outline-none">
+                  className="bg-gray-800 border border-gray-700 rounded px-1 py-0.5 text-[9px] text-gray-400 outline-none w-14" title="Mover">
                   <option value="" disabled>→</option>
                   {otherZones.map(z => <option key={z.id} value={z.id}>{z.name}</option>)}
                 </select>
@@ -669,7 +786,6 @@ function TestSubmitRow({ charId, charName, testId, onSubmit }: {
   const [complications, setComplications] = useState(0);
   const [submitted, setSubmitted] = useState(false);
   if (submitted) return <span className="text-[10px] text-gray-500">✓ {charName} enviou resultado</span>;
-
   return (
     <div className="flex items-center gap-2 text-xs flex-wrap">
       <span className="text-purple-300 font-medium">{charName}:</span>
@@ -693,8 +809,9 @@ function TestSubmitRow({ charId, charName, testId, onSubmit }: {
 /* ═══════════════════════════════════════════════════
    PLAYER CARD
    ═══════════════════════════════════════════════════ */
-function PlayerCard({ player, isGm, isCurrentTurn, onKick, onClick }: {
+function PlayerCard({ player, isGm, isCurrentTurn, onKick, onClick, onWhisper }: {
   player: SessionPlayer; isGm: boolean; isCurrentTurn: boolean; onKick: () => void; onClick: () => void;
+  onWhisper: () => void;
 }) {
   const hpPct = player.vitalidade_max > 0 ? Math.round((player.vitalidade_current / player.vitalidade_max) * 100) : 100;
   const hpColor = hpPct > 60 ? 'bg-green-500' : hpPct > 30 ? 'bg-yellow-500' : 'bg-red-500';
@@ -709,13 +826,20 @@ function PlayerCard({ player, isGm, isCurrentTurn, onKick, onClick }: {
         <Avatar src={player.avatar_url} name={player.character_name} size={36}
           className={isCurrentTurn ? 'border-hero-500' : ''} />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-white truncate">{player.character_name}</p>
+          <div className="flex items-center gap-1">
+            <p className="text-sm font-semibold text-white truncate">{player.character_name}</p>
+            {isCurrentTurn && <span className="text-[8px] bg-hero-600/30 text-hero-300 px-1.5 py-0.5 rounded-full shrink-0">VEZ</span>}
+          </div>
           <p className="text-[10px] text-gray-500 truncate">{player.display_name}</p>
         </div>
-        {isGm && (
-          <button onClick={e => { e.stopPropagation(); onKick(); }}
-            className="opacity-0 group-hover:opacity-100 text-[10px] text-red-500 hover:text-red-400 transition-all-fast" title="Remover">✕</button>
-        )}
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all-fast">
+          <button onClick={e => { e.stopPropagation(); onWhisper(); }}
+            className="text-[10px] text-purple-400 hover:text-purple-300 px-1" title="Sussurrar">🔒</button>
+          {isGm && (
+            <button onClick={e => { e.stopPropagation(); onKick(); }}
+              className="text-[10px] text-red-500 hover:text-red-400 px-1" title="Remover">✕</button>
+          )}
+        </div>
       </div>
       <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden mb-1">
         <div className={`h-full ${hpColor} hp-bar-fill rounded-full`} style={{ width: `${hpPct}%` }} />
@@ -739,14 +863,19 @@ function PlayerCard({ player, isGm, isCurrentTurn, onKick, onClick }: {
 
 function ChatBubble({ msg, myUserId }: { msg: ChatMsg; myUserId: number }) {
   const isMine = msg.user_id === myUserId;
+  const isWhisper = msg.message_type === 'whisper';
   if (msg.message_type === 'system') return <div className="text-center text-[10px] text-gray-600 py-0.5 italic">{msg.content}</div>;
   return (
     <div className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
       {!isMine && <span className="text-[10px] text-gray-500 ml-1 mb-0.5">{msg.display_name}</span>}
       <div className={`max-w-[85%] px-3 py-1.5 rounded-xl text-sm ${
+        isWhisper ? 'whisper-bubble text-purple-200 italic' :
         msg.message_type === 'roll' ? 'bg-purple-900/40 border border-purple-700/40 text-purple-200' :
         isMine ? 'bg-hero-600/30 text-hero-100' : 'bg-gray-800 text-gray-200'
-      }`}>{msg.content}</div>
+      }`}>
+        {isWhisper && <span className="text-[9px] text-purple-400 block mb-0.5">🔒 Sussurro</span>}
+        {msg.content}
+      </div>
       <span className="text-[9px] text-gray-600 mx-1 mt-0.5">
         {msg.created_at ? new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : ''}
       </span>
@@ -799,7 +928,6 @@ function QuickRollResult({ roll }: { roll: RollResult }) {
 function PlayerSheetView({ player, isGm, onClose }: { player: SessionPlayer; isGm: boolean; onClose: () => void }) {
   const hpPct = player.vitalidade_max > 0 ? Math.round((player.vitalidade_current / player.vitalidade_max) * 100) : 100;
   const hpColor = hpPct > 60 ? 'text-green-400' : hpPct > 30 ? 'text-yellow-400' : 'text-red-400';
-
   return (
     <div className="space-y-5 max-w-3xl mx-auto animate-scale-in">
       <div className="flex items-center gap-4">
@@ -886,7 +1014,7 @@ function SessionOverview({ table, gm, players, isGm }: {
       )}
       {isGm && (
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-          <p className="text-xs text-gray-400">💡 <strong>Dica:</strong> Clique em <strong>🎭</strong> no topo para abrir as ferramentas de mestre — encontros, zonas e testes genéricos.</p>
+          <p className="text-xs text-gray-400">💡 <strong>Dica:</strong> Clique em <strong>🎭</strong> no topo para abrir as ferramentas de mestre — encontros, zonas e testes genéricos. Personagens são alocados automaticamente na primeira zona ao iniciar um encontro.</p>
         </div>
       )}
     </div>
